@@ -17,8 +17,6 @@ class StaticFactory(BaseAviary):
     def reset(self):
         obs, info = super().reset(seed=42)
 
-        time.sleep(1)
-
         if hasattr(self, 'obstacle_ids'):
             for obs_id in self.obstacle_ids:
                 p.removeBody(obs_id, physicsClientId=self.CLIENT)
@@ -38,32 +36,34 @@ class StaticFactory(BaseAviary):
 
         for _ in range(num_obstacles):
             while True:
-                x = np.random.uniform(-arena_size, arena_size)
-                y = np.random.uniform(-arena_size, arena_size)
-                z = obstacle_size[2] / 2
-
+                x = np.random.uniform(-arena_size / 2 + obstacle_size[0] / 2, arena_size / 2 - obstacle_size[0] / 2)
+                y = np.random.uniform(-arena_size / 2 + obstacle_size[1] / 2, arena_size / 2 - obstacle_size[1] / 2)
+                z = obstacle_size[2] / 2  
 
                 distance = np.linalg.norm(np.array([x, y]) - drone_start_pos[:2])
                 if distance > obstacle_size[0]: 
                     break  
-
-            size_x = np.random.uniform(0.1, obstacle_size[0])
-            size_y = np.random.uniform(0.1, obstacle_size[1])
-            size_z = obstacle_size[2]
-
-            collision_shape = p.createCollisionShape(shapeType=p.GEOM_BOX,
-                                                        halfExtents=[size_x / 2, size_y / 2, size_z / 2],
-                                                        physicsClientId=self.CLIENT)
-            visual_shape = p.createVisualShape(shapeType=p.GEOM_BOX,
-                                                halfExtents=[size_x / 2, size_y / 2, size_z / 2],
-                                                rgbaColor=[1, 0, 0, 1],
-                                                physicsClientId=self.CLIENT)
-            obstacle_id = p.createMultiBody(baseMass=0,
-                                            baseCollisionShapeIndex=collision_shape,
-                                            baseVisualShapeIndex=visual_shape,
-                                            basePosition=[x, y, z],
-                                            physicsClientId=self.CLIENT)
+            
+            collision_shape = p.createCollisionShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=[obstacle_size[0] / 2, obstacle_size[1] / 2, obstacle_size[2] / 2],
+                physicsClientId=self.CLIENT
+            )
+            visual_shape = p.createVisualShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=[obstacle_size[0] / 2, obstacle_size[1] / 2, obstacle_size[2] / 2],
+                rgbaColor=[0.6, 0.4, 0.2, 1],  
+                physicsClientId=self.CLIENT
+            )
+            obstacle_id = p.createMultiBody(
+                baseMass=0,
+                baseCollisionShapeIndex=collision_shape,
+                baseVisualShapeIndex=visual_shape,
+                basePosition=[x, y, z],
+                physicsClientId=self.CLIENT
+            )
             self.obstacle_ids.append(obstacle_id)
+
 
     def _actionSpace(self):
         """Defines the action space."""
@@ -93,7 +93,7 @@ class StaticFactory(BaseAviary):
 
     def _computeTerminated(self):
         """Checks if the episode should terminate."""
-        # Terminate if the drone crashes or flies out of bounds
+
         pos = self.pos[0]
         if pos[2] < 0.0 or pos[2] > 10.0:
             return True
@@ -101,8 +101,8 @@ class StaticFactory(BaseAviary):
 
     def _computeTruncated(self):
         """Checks if the episode should be truncated."""
-        # Truncate after a fixed number of steps
-        max_steps = 2400  # 10 seconds at 240 Hz
+
+        max_steps = 2400  
         return self.step_counter >= max_steps
 
     def _computeInfo(self):
