@@ -11,7 +11,7 @@ def main():
         gui=True,
         obstacles=False,
         obstacle_config={
-            'num_obstacles': 0,  # No additional obstacles; conveyor belt is enough
+            'num_obstacles': 0, 
             'obstacle_size': [0.5, 0.5, 0.5],
             'arena_size': 10.0,
         },
@@ -24,7 +24,7 @@ def main():
     ctrl_freq = env.CTRL_FREQ
     num_steps = int(duration_sec * ctrl_freq)
 
-    target_pos = np.array([0.0, 0.0, 1.0])  # Hover above starting point
+    target_pos = np.array([0.0, 0.0, 1.0])  
 
     for step in range(num_steps):
         start_time = time.time()
