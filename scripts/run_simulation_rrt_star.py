@@ -42,6 +42,7 @@ def main():
     goal_pos = np.array([5.0, 5.0, 1.0])
 
 
+
     obstacles = []
     for obs_id in env.obstacle_ids:
         pos, _ = p.getBasePositionAndOrientation(obs_id, physicsClientId=env.CLIENT)
@@ -54,6 +55,8 @@ def main():
     y_range = [-arena_size/2, arena_size/2]
     z_range = [0.5, 2.0]
 
+    start_pos = np.copy(env.pos[0])
+
     # Initialize the RRT* planner
     planner = RRTStarPlanner(
         start=start_pos,
@@ -62,7 +65,7 @@ def main():
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=5000,
+        max_iter=1000,
         step_size=0.5,
         goal_sample_rate=0.1,
         search_radius=1.0
@@ -140,6 +143,8 @@ def main():
 
 
     env.close()
+
+    planner.draw_tree()
 
     logger.save()
     logger.save_as_csv("simulation_rrt_star")
