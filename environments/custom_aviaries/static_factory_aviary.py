@@ -73,3 +73,6 @@ class StaticFactory(VelocityAviary):
                     physicsClientId=self.CLIENT
                 )
                 self.obstacle_ids.append(obstacle_id)
+
+
+        
