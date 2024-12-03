@@ -1,5 +1,7 @@
 import numpy as np
 import random
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D 
 
 
 class Node:
@@ -21,6 +23,7 @@ class RRTStarPlanner:
         self.goal_sample_rate = goal_sample_rate
         self.search_radius = search_radius
         self.node_list = [self.start]
+        self.edge_list = []
 
     def plan(self):
         for _ in range(self.max_iter):
@@ -31,6 +34,7 @@ class RRTStarPlanner:
                 near_nodes = self.find_near_nodes(new_node)
                 new_node = self.choose_parent(new_node, near_nodes)
                 self.node_list.append(new_node)
+                self.edge_list.append((new_node.parent, new_node))
                 self.rewire(new_node, near_nodes)
             if np.linalg.norm(new_node.position - self.goal.position) <= self.step_size:
                 if self.check_collision(new_node.position, self.goal.position):
@@ -119,8 +123,14 @@ class RRTStarPlanner:
             if self.check_collision(new_node.position, near_node.position):
                 cost = new_node.cost + np.linalg.norm(new_node.position - near_node.position)
                 if cost < near_node.cost:
+                    old_parent = near_node.parent
+                    if old_parent is not None:
+                        self.edge_list.remove((old_parent, near_node))
+
                     near_node.parent = new_node
                     near_node.cost = cost
+
+                    self.edge_list.append((new_node, near_node))
 
     def extract_path(self):
         path = []
@@ -130,3 +140,37 @@ class RRTStarPlanner:
             node = node.parent
         path.reverse()
         return path
+
+
+
+    #### Needs debugging ####
+    def draw_tree(self, show=True):
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+
+            # Plot the edges
+            for edge in self.edge_list:
+                parent_node, child_node = edge
+                x_vals = [parent_node.position[0], child_node.position[0]]
+                y_vals = [parent_node.position[1], child_node.position[1]]
+                z_vals = [parent_node.position[2], child_node.position[2]]
+                ax.plot(x_vals, y_vals, z_vals, color='blue', linewidth=0.5)
+
+
+            # Plot the start and goal nodes
+            ax.scatter(self.start.position[0], self.start.position[1], self.start.position[2], color='green', marker='o', s=100, label='Start')
+            ax.scatter(self.goal.position[0], self.goal.position[1], self.goal.position[2], color='red', marker='*', s=100, label='Goal')
+
+            # Set labels and legend
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title('RRT* Tree')
+            ax.legend()
+
+            # Set equal aspect ratio
+            ax.set_box_aspect([np.ptp(a) for a in [self.x_range, self.y_range, self.z_range]])
+
+
+            if show:
+                plt.show()
