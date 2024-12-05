@@ -7,6 +7,7 @@ from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.utils.Logger import Logger
 
 
+
 def main():
     duration_sec = 50  
     simulation_freq_hz = 240
@@ -65,19 +66,14 @@ def main():
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=1000,
-        step_size=0.5,
-        goal_sample_rate=0.1,
-        search_radius=1.0
+        max_iter=5000,
+        step_size=0.01,
+        goal_sample_rate=0.01,
+        search_radius=0.5,
     )
 
     # Plan the path
     path = planner.plan()
-    if path is None:
-        print("Failed to find a path!")
-        env.close()
-        return
-
     # Visualize the path
     for i in range(len(path) - 1):
         p.addUserDebugLine(
@@ -87,6 +83,24 @@ def main():
             lifeTime=0,
             physicsClientId=env.CLIENT
         )
+
+    # path = planner.compute_bspline_path(path,degree=2, num_points=100)
+
+    if path is None:
+        print("Failed to find a path!")
+        env.close()
+        return
+
+    # # Visualize the bspline path
+    # for i in range(len(path) - 1):
+    #     p.addUserDebugLine(
+    #         lineFromXYZ=path[i],
+    #         lineToXYZ=path[i+1],
+    #         lineColorRGB=[0, 0, 1],
+    #         lifeTime=0,
+    #         physicsClientId=env.CLIENT
+    #     )
+    
 
     # Prepare for simulation
     waypoints = np.array(path)
