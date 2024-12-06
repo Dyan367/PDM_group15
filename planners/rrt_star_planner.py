@@ -157,25 +157,43 @@ class RRTStarPlanner:
 
     def check_collision(self, p1, p2):
         for obs in self.obstacles:
-            if self.line_intersects_obs(p1, p2, obs['position'], obs['size']):
-                return False  
-        return True  
+            if self.line_intersects_obs(p1, p2, obs['aabb_min'], obs['aabb_max']):
+                return False  # Collision detected
+        return True  # No collision
 
-    def line_intersects_obs(self, p1, p2, cube_center, cube_size):
-        # AABB collision detection between a line segment and a cube
+    def line_intersects_obs(self, p1, p2, aabb_min, aabb_max):
+        """
+        Check if a line segment intersects with an AABB.
+
+        :param p1: Start point of the line segment (numpy array).
+        :param p2: End point of the line segment (numpy array).
+        :param aabb_min: Minimum corner of the AABB (numpy array).
+        :param aabb_max: Maximum corner of the AABB (numpy array).
+        :return: True if the line segment intersects the AABB, False otherwise.
+        """
         dir_vector = p2 - p1
-        for i in range(3):
-            if dir_vector[i] == 0:
-                if p1[i] < cube_center[i] - cube_size[i]/2 or p1[i] > cube_center[i] + cube_size[i]/2:
+        tmin = 0.0
+        tmax = 1.0
+
+        for i in range(3):  # For each axis (x, y, z)
+            if dir_vector[i] != 0.0:  # Line is not parallel to the axis
+                t1 = (aabb_min[i] - p1[i]) / dir_vector[i]
+                t2 = (aabb_max[i] - p1[i]) / dir_vector[i]
+
+                tmin_axis = min(t1, t2)
+                tmax_axis = max(t1, t2)
+
+                tmin = max(tmin, tmin_axis)
+                tmax = min(tmax, tmax_axis)
+
+                if tmin > tmax:  # No intersection
                     return False
-            else:
-                t1 = (cube_center[i] - cube_size[i]/2 - p1[i]) / dir_vector[i]
-                t2 = (cube_center[i] + cube_size[i]/2 - p1[i]) / dir_vector[i]
-                tmin = max(min(t1, t2), 0)
-                tmax = min(max(t1, t2), 1)
-                if tmin > tmax:
+            else:  # Line is parallel to the axis
+                if p1[i] < aabb_min[i] or p1[i] > aabb_max[i]:  # Line is outside the AABB
                     return False
-        return True
+
+        return True  # Intersection detected
+
 
     def find_near_nodes(self, new_node):
         n = len(self.node_list)

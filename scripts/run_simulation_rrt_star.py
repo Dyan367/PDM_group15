@@ -29,8 +29,8 @@ def main():
         obstacles=True,
         user_debug_gui=False,
         obstacle_config={
-            'num_obstacles': 6,
-            'obstacle_size': [2, 0.5, 10.0],
+            'num_obstacles': 50,
+            'obstacle_radius': 0.6,
             'arena_size': 10.0
         },
         seed=40
@@ -39,22 +39,42 @@ def main():
 
     logger = Logger(logging_freq_hz=control_freq_hz, num_drones=1)
 
-    start_pos = env.pos[0]
-    goal_pos = np.array([5.0, 5.0, 1.0])
-
-
-
     obstacles = []
     for obs_id in env.obstacle_ids:
         pos, _ = p.getBasePositionAndOrientation(obs_id, physicsClientId=env.CLIENT)
-        size = p.getVisualShapeData(obs_id, physicsClientId=env.CLIENT)[0][3]  
-        obstacles.append({'position': np.array(pos), 'size': np.array(size) * 2})  
+        radius = p.getVisualShapeData(obs_id, physicsClientId=env.CLIENT)[0][3][0]  # Extract the sphere radius
+
+        aabb_min = np.array(pos) - np.array([radius, radius, radius])
+        aabb_max = np.array(pos) + np.array([radius, radius, radius])
+
+        obstacles.append({'aabb_min': aabb_min, 'aabb_max': aabb_max})
+
 
 
     arena_size = env.obstacle_config['arena_size']
     x_range = [-arena_size/2, arena_size/2]
     y_range = [-arena_size/2, arena_size/2]
     z_range = [0.5, 2.0]
+
+    goal_x = np.random.uniform(-arena_size / 2, arena_size / 2)
+    goal_y = np.random.uniform(-arena_size / 2, arena_size / 2)
+    goal_z = np.random.uniform(0.5, 2.5)
+    goal_pos = np.array([goal_x, goal_y, goal_z])
+
+    goal_radius = 0.1
+    goal_color = [0.0, 1.0, 0.0, 1.0]
+    goal_visual = p.createVisualShape(
+        shapeType=p.GEOM_SPHERE,
+        radius=goal_radius,
+        rgbaColor=goal_color,
+        physicsClientId=env.CLIENT
+    )
+    p.createMultiBody(
+        baseMass=0,
+        baseVisualShapeIndex=goal_visual,
+        basePosition=goal_pos,
+        physicsClientId=env.CLIENT
+    )
 
     start_pos = np.copy(env.pos[0])
 
@@ -66,8 +86,8 @@ def main():
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=5000,
-        step_size=0.01,
+        max_iter=1000,
+        step_size=0.2,
         goal_sample_rate=0.01,
         search_radius=0.5,
     )
