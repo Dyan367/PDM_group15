@@ -1,12 +1,16 @@
 import numpy as np
 import time
 import pybullet as p
+import sys
+import os
+
+# Add the parent directory of 'environments' to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from environments.custom_aviaries.static_factory_aviary import StaticFactory
 from planners.rrt_star_planner import RRTStarPlanner
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.utils.Logger import Logger
-
-
+from bvh.bvh import BVHNode, build_bvh
 
 def main():
     duration_sec = 50  
@@ -29,8 +33,8 @@ def main():
         obstacles=True,
         user_debug_gui=False,
         obstacle_config={
-            'num_obstacles': 50,
-            'obstacle_radius': 0.6,
+            'num_obstacles': 150,
+            'obstacle_radius': 0.3,
             'arena_size': 10.0
         },
         seed=40
@@ -48,7 +52,9 @@ def main():
         aabb_max = np.array(pos) + np.array([radius, radius, radius])
 
         obstacles.append({'aabb_min': aabb_min, 'aabb_max': aabb_max})
-
+    
+    bvh = build_bvh(obstacles)
+    use_bvh = True
 
 
     arena_size = env.obstacle_config['arena_size']
@@ -86,14 +92,20 @@ def main():
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=1000,
+        bvh=bvh,
+        use_bvh=use_bvh,
+        max_iter=5000,
         step_size=0.2,
         goal_sample_rate=0.01,
         search_radius=0.5,
     )
 
     # Plan the path
+    start_time = time.time() 
     path = planner.plan()
+    end_time = time.time()  # Record the end time
+    elapsed_time = end_time - start_time
+    print(f"Elapsed planner time: {elapsed_time:.4f} seconds")
     # Visualize the path
     for i in range(len(path) - 1):
         p.addUserDebugLine(
@@ -179,9 +191,9 @@ def main():
     env.close()
 
     planner.draw_tree()
-
-    logger.save()
-    logger.save_as_csv("simulation_rrt_star")
+    print(f"Elapsed planner time: {elapsed_time:.4f} seconds")
+    #logger.save()
+    #logger.save_as_csv("simulation_rrt_star")
 
 if __name__ == "__main__":
     main()

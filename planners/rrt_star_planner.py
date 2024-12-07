@@ -6,6 +6,8 @@ from scipy.interpolate import BSpline, splprep, splev
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 from gym_pybullet_drones.utils.enums import DroneModel
 import pybullet as p
+from bvh.bvh import BVHNode, build_bvh
+
 
 
 class Node:
@@ -15,7 +17,7 @@ class Node:
         self.cost = 0.0
 
 class RRTStarPlanner:
-    def __init__(self, start, goal, obstacles, x_range, y_range, z_range, max_iter=1000, step_size=0.1, goal_sample_rate=0.1, search_radius=1.0):
+    def __init__(self, start, goal, obstacles, x_range, y_range, z_range,bvh,use_bvh=False, max_iter=1000, step_size=0.1, goal_sample_rate=0.1, search_radius=1.0):
         self.start = Node(start)
         self.goal = Node(goal)
         self.obstacles = obstacles  
@@ -28,6 +30,8 @@ class RRTStarPlanner:
         self.search_radius = search_radius
         self.node_list = [self.start]
         self.edge_list = []
+        self.bvh = bvh
+        self.use_bvh = use_bvh
 
     def plan(self):
         for _ in range(self.max_iter):
@@ -81,6 +85,7 @@ class RRTStarPlanner:
     #     new_node.cost = from_node.cost + np.linalg.norm(new_node.position - from_node.position)
     #     return new_node
 
+    ## APPROXIMATE STEER USING SIMULATION MODEL
     def steer(self, from_node, to_point):
         """
         Steers the quadrotor using DSLPIDControl for position and attitude control.
@@ -154,29 +159,35 @@ class RRTStarPlanner:
 
         return new_node
 
-
-    def check_collision(self, p1, p2):
+    ## BASIC CHECK COLLISION FUNCTION
+    def basic_check_collision(self, p1, p2):
         for obs in self.obstacles:
             if self.line_intersects_obs(p1, p2, obs['aabb_min'], obs['aabb_max']):
                 return False  # Collision detected
         return True  # No collision
+    
+
+    ## BOUNDING VOLUME HIEARCHY TREE COLLISION CHECK
+    def check_collision(self, p1, p2):
+        if not self.use_bvh:
+            return self.basic_check_collision(p1,p2)
+        else:
+            aabb_min = np.minimum(p1, p2) - self.step_size
+            aabb_max = np.maximum(p1, p2) + self.step_size
+
+            potential_collisions = self.bvh.query_bvh(self.bvh, aabb_min, aabb_max)
+            for obs in potential_collisions:
+                if self.line_intersects_obs(p1, p2, obs['aabb_min'], obs['aabb_max']):
+                    return False  # Collision detected
+            return True  # No collision
 
     def line_intersects_obs(self, p1, p2, aabb_min, aabb_max):
-        """
-        Check if a line segment intersects with an AABB.
-
-        :param p1: Start point of the line segment (numpy array).
-        :param p2: End point of the line segment (numpy array).
-        :param aabb_min: Minimum corner of the AABB (numpy array).
-        :param aabb_max: Maximum corner of the AABB (numpy array).
-        :return: True if the line segment intersects the AABB, False otherwise.
-        """
         dir_vector = p2 - p1
         tmin = 0.0
         tmax = 1.0
 
-        for i in range(3):  # For each axis (x, y, z)
-            if dir_vector[i] != 0.0:  # Line is not parallel to the axis
+        for i in range(3):
+            if dir_vector[i] != 0.0:
                 t1 = (aabb_min[i] - p1[i]) / dir_vector[i]
                 t2 = (aabb_max[i] - p1[i]) / dir_vector[i]
 
@@ -186,13 +197,13 @@ class RRTStarPlanner:
                 tmin = max(tmin, tmin_axis)
                 tmax = min(tmax, tmax_axis)
 
-                if tmin > tmax:  # No intersection
+                if tmin > tmax:
                     return False
-            else:  # Line is parallel to the axis
-                if p1[i] < aabb_min[i] or p1[i] > aabb_max[i]:  # Line is outside the AABB
+            else:
+                if p1[i] < aabb_min[i] or p1[i] > aabb_max[i]:
                     return False
 
-        return True  # Intersection detected
+        return True
 
 
     def find_near_nodes(self, new_node):
