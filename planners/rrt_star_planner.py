@@ -2,6 +2,10 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D 
+from scipy.interpolate import BSpline, splprep, splev
+from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
+from gym_pybullet_drones.utils.enums import DroneModel
+import pybullet as p
 
 
 class Node:
@@ -62,41 +66,134 @@ class RRTStarPlanner:
         min_index = distances.index(min(distances))
         return node_list[min_index]
 
+    ## BASIC STEER FUNCTION
+    # def steer(self, from_node, to_point):
+    #     ### Creates new node and path in the direction 
+    #     # from the nearest node to the new node limited
+    #     # by the step size
+    #     direction = to_point - from_node.position
+    #     distance = np.linalg.norm(direction)
+    #     if distance > self.step_size:
+    #         direction = (direction / distance) * self.step_size
+    #     new_position = from_node.position + direction
+    #     new_node = Node(new_position)
+    #     new_node.parent = from_node
+    #     new_node.cost = from_node.cost + np.linalg.norm(new_node.position - from_node.position)
+    #     return new_node
+
     def steer(self, from_node, to_point):
-        ### Creates new node and path in the direction 
-        # from the nearest node to the new node limited
-        # by the step size
-        direction = to_point - from_node.position
-        distance = np.linalg.norm(direction)
-        if distance > self.step_size:
-            direction = (direction / distance) * self.step_size
-        new_position = from_node.position + direction
+        """
+        Steers the quadrotor using DSLPIDControl for position and attitude control.
+
+        Parameters
+        ----------
+        from_node : Node
+            The starting node of the motion.
+        to_point : ndarray
+            The target position to steer towards.
+
+        Returns
+        -------
+        Node
+            The new node reached using the steering action.
+        """
+        # Initialize PID controller
+        pid_controller = DSLPIDControl(drone_model=DroneModel.CF2X, g=9.81)
+
+        # Simulation parameters
+        control_timestep = 0.01  # Time step for the control loop (s)
+        max_time = 1.0  # Maximum time allowed for steering (s)
+        time_elapsed = 0
+
+        # Initialize the quadrotor state
+        cur_pos = np.array(from_node.position)
+        cur_vel = np.zeros(3)
+        cur_quat = np.array([1, 0, 0, 0])  # Neutral orientation (w, x, y, z)
+        cur_ang_vel = np.zeros(3)
+
+        # Initialize target state
+        target_pos = np.array(to_point)
+        target_rpy = np.zeros(3)  # Assuming flat orientation
+
+        path = [cur_pos]
+
+        while time_elapsed < max_time:
+            # Compute control action
+            rpm, pos_e, yaw_error = pid_controller.computeControl(
+                control_timestep=control_timestep,
+                cur_pos=cur_pos,
+                cur_quat=cur_quat,
+                cur_vel=cur_vel,
+                cur_ang_vel=cur_ang_vel,
+                target_pos=target_pos,
+                target_rpy=target_rpy,
+            )
+
+            # Simulate the dynamics (simplified for illustration)
+            # Update position based on velocity
+            cur_vel += pos_e * control_timestep
+            cur_pos += cur_vel * control_timestep
+
+            # Update orientation (assuming no rotation for simplicity)
+            cur_quat = np.array([1, 0, 0, 0])
+
+            # Record the path
+            path.append(cur_pos)
+
+            # Check if we are close enough to the target
+            if np.linalg.norm(cur_pos - target_pos) < self.step_size:
+                break
+
+            time_elapsed += control_timestep
+
+        # Create a new node at the final position
+        new_position = np.array(path[-1])
         new_node = Node(new_position)
         new_node.parent = from_node
-        new_node.cost = from_node.cost + np.linalg.norm(new_node.position - from_node.position)
+        new_node.cost = from_node.cost + np.linalg.norm(new_position - from_node.position)
+
         return new_node
+
 
     def check_collision(self, p1, p2):
         for obs in self.obstacles:
-            if self.line_intersects_obs(p1, p2, obs['position'], obs['size']):
-                return False  
-        return True  
+            if self.line_intersects_obs(p1, p2, obs['aabb_min'], obs['aabb_max']):
+                return False  # Collision detected
+        return True  # No collision
 
-    def line_intersects_obs(self, p1, p2, cube_center, cube_size):
-        # AABB collision detection between a line segment and a cube
+    def line_intersects_obs(self, p1, p2, aabb_min, aabb_max):
+        """
+        Check if a line segment intersects with an AABB.
+
+        :param p1: Start point of the line segment (numpy array).
+        :param p2: End point of the line segment (numpy array).
+        :param aabb_min: Minimum corner of the AABB (numpy array).
+        :param aabb_max: Maximum corner of the AABB (numpy array).
+        :return: True if the line segment intersects the AABB, False otherwise.
+        """
         dir_vector = p2 - p1
-        for i in range(3):
-            if dir_vector[i] == 0:
-                if p1[i] < cube_center[i] - cube_size[i]/2 or p1[i] > cube_center[i] + cube_size[i]/2:
+        tmin = 0.0
+        tmax = 1.0
+
+        for i in range(3):  # For each axis (x, y, z)
+            if dir_vector[i] != 0.0:  # Line is not parallel to the axis
+                t1 = (aabb_min[i] - p1[i]) / dir_vector[i]
+                t2 = (aabb_max[i] - p1[i]) / dir_vector[i]
+
+                tmin_axis = min(t1, t2)
+                tmax_axis = max(t1, t2)
+
+                tmin = max(tmin, tmin_axis)
+                tmax = min(tmax, tmax_axis)
+
+                if tmin > tmax:  # No intersection
                     return False
-            else:
-                t1 = (cube_center[i] - cube_size[i]/2 - p1[i]) / dir_vector[i]
-                t2 = (cube_center[i] + cube_size[i]/2 - p1[i]) / dir_vector[i]
-                tmin = max(min(t1, t2), 0)
-                tmax = min(max(t1, t2), 1)
-                if tmin > tmax:
+            else:  # Line is parallel to the axis
+                if p1[i] < aabb_min[i] or p1[i] > aabb_max[i]:  # Line is outside the AABB
                     return False
-        return True
+
+        return True  # Intersection detected
+
 
     def find_near_nodes(self, new_node):
         n = len(self.node_list)
@@ -140,6 +237,14 @@ class RRTStarPlanner:
             node = node.parent
         path.reverse()
         return path
+    
+    def compute_bspline_path(self, path, degree=5, num_points=200):
+        path = np.array(path)
+        tck, u = splprep([path[:, 0], path[:, 1], path[:, 2]], s=0, k=degree)
+        u_fine = np.linspace(0, 1, num_points)
+        x_fine, y_fine, z_fine = splev(u_fine, tck)
+        bspline_path = np.vstack((x_fine, y_fine, z_fine)).T
+        return bspline_path
 
 
 
@@ -174,3 +279,5 @@ class RRTStarPlanner:
 
             if show:
                 plt.show()
+
+
