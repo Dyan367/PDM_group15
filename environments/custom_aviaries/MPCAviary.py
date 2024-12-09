@@ -1,10 +1,11 @@
 import os
 import numpy as np
 from gymnasium import spaces
-
+import sys
+sys.path.append('PDM_group15/environments/custom_aviaries/MPCControl.py')
 from gym_pybullet_drones.envs.BaseAviary import BaseAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
-from gym_pybullet_drones.control.MPCControl import MPCControl
+from environments.custom_aviaries.MPCControl import MPCControl
 
 class MPCAviary(BaseAviary):
     """Multi-drone environment class for high-level planning."""
@@ -164,8 +165,8 @@ class MPCAviary(BaseAviary):
                                                     cur_vel=state[10:13],
                                                     cur_ang_vel=state[13:16],
                                                     target_pos= target_pos,  #state[0:3], # same as the current position
-                                                    target_rpy= target_rpy, #np.array([0,0,state[9]]), # keep current yaw
-                                                    target_vel= target_vel,
+                                                    target_rpy= np.array([0.01,0.01,state[9]]), # keep current yaw
+                                                    target_vel= np.array([0.5,0.5,0.5]),
                                                     target_state=target_state,   #self.SPEED_LIMIT * np.abs(target_v[3]) * v_unit_vector # target the desired velocity vector
                                                     )
             rpm[k,:] = temp

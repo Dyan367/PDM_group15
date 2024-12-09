@@ -72,32 +72,50 @@ class MPCControl(BaseControl):
         # [INFO] drag_xy_coeff 0.000001, drag_z_coeff 0.000001,
         # [INFO] dw_coeff_1 2267.180000, dw_coeff_2 0.160000, dw_coeff_3 -0.110000
 
-        m = 0.027000   # Mass of the quadrotor (kg)
-        l = 0.039700 # Length of the quadrotor arm (m)
-        I_x = 0.000014  # Moment of inertia about x-axis (kg·m^2)
-        I_y = 0.000014  # Moment of inertia about y-axis (kg·m^2)
-        I_z = 0.000022  # Moment of inertia about z-axis (kg·m^2)
+        self.m = 0.027000   # Mass of the quadrotor (kg)
+        self.l = 0.039700 # Length of the quadrotor arm (m)
+        self.I_x = 0.000014  # Moment of inertia about x-axis (kg·m^2)
+        self.I_y = 0.000014  # Moment of inertia about y-axis (kg·m^2)
+        self.I_z = 0.000022  # Moment of inertia about z-axis (kg·m^2)
 
         # State-space matrices
-        self.linear_drone_A = np.block([
-            [np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 3))],
-            [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3)],
-            [np.zeros((3, 3)), np.array([[0, g, 0], [-g, 0, 0], [0, 0, 0]]), np.zeros((3, 3)), np.zeros((3, 3))],
-            [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3))]
-        ])
+        # self.linear_drone_A = np.block([
+        #     [np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 3))],
+        #     [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3)],
+        #     [np.zeros((3, 3)), np.array([[0, g, 0], [-g, 0, 0], [0, 0, 0]]), np.zeros((3, 3)), np.zeros((3, 3))],
+        #     [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3))]
+        # ])
+        self.linear_drone_A = np.array([[0, 0, 0, 1, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 1, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 1, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 0, 0, 0, 1],
+                        [0, 0, 0, 0, 0, 0, 0, 0]
+                    ])
 
-        self.linear_drone_B = np.block([
-            [np.zeros((3, 4))],
-            [np.zeros((3, 4))],
-            [np.array([[0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [1 / m, 0, 0, 0]])],
-            [np.array([[0, l / I_x, 0, 0],
-                    [0, 0, l/ I_y, 0],
-                    [0, 0, 0, l / I_z]])]
-        ])
-        self.dt = 0.01
-        self.Ad, self.Bd = discretize_tustin(self.linear_drone_A,self.linear_drone_B, self.dt)
+        # self.linear_drone_B = np.block([
+        #     [np.zeros((3, 4))],
+        #     [np.zeros((3, 4))],
+        #     [np.array([[0, 0, 0, 0],
+        #             [0, 0, 0, 0],
+        #             [1 / self.m, 0, 0, 0]])],
+        #     [np.array([[0, self.l / self.I_x, 0, 0],
+        #             [0, 0, self.l/ self.I_y, 0],
+        #             [0, 0, 0, self.l / self.I_z]])]
+        # ])
+        self.linear_drone_B = np.array([[0, 0, 0, 0],
+                        [0, 0, 0, 0],
+                        [0, 0, 0, 0],
+                        [1, 0, 0, 0],
+                        [0, 1, 0, 0],
+                        [0, 0, 1, 0],
+                        [0, 0, 0, 0],
+                        [0, 0, 0, 1]
+                    ])
+        self.dt = 1/48
+        self.Ad, self.Bd = discretize_tustin(self.linear_drone_A,self.linear_drone_B, 0.01)
 
         self.reset()
 
@@ -245,9 +263,13 @@ class MPCControl(BaseControl):
         self.integral_pos_e = np.clip(self.integral_pos_e, -2., 2.)
         self.integral_pos_e[2] = np.clip(self.integral_pos_e[2], -0.15, .15)
         #### MPC target thrust #####################################
+        hover_thrust = 0.027000*9.81
         target_thrust = [0.0,0.0,u[0]]
 
-        scalar_thrust = u[0]
+        scalar_thrust = u[0] 
+        if scalar_thrust < 0:
+            scalar_thrust = 0   # Thrust should be positive
+
 
         thrust = (math.sqrt(scalar_thrust / (4*self.KF)) - self.PWM2RPM_CONST) / self.PWM2RPM_SCALE
         target_z_ax = target_thrust / np.linalg.norm(target_thrust)
@@ -297,14 +319,14 @@ class MPCControl(BaseControl):
         target_quat = (Rotation.from_euler('XYZ', target_euler, degrees=False)).as_quat()
         w,x,y,z = target_quat
 
-        # Ensure the quaternion has a non-zero norm
-        if np.linalg.norm([w, x, y, z]) > 0:
-            target_rotation = (Rotation.from_quat([w, x, y, z])).as_matrix()
-        else:
-            # Handle the zero norm quaternion case
-            target_rotation = np.eye(3)
+        # # Ensure the quaternion has a non-zero norm
+        # if np.linalg.norm([w, x, y, z]) > 0:
+        #     target_rotation = (Rotation.from_quat([w, x, y, z])).as_matrix()
+        # else:
+        #     # Handle the zero norm quaternion case
+        #     target_rotation = np.eye(3)
 
-        #target_rotation = (Rotation.from_quat([w, x, y, z])).as_matrix()
+        target_rotation = (Rotation.from_quat([w, x, y, z])).as_matrix()
         rot_matrix_e = np.dot((target_rotation.transpose()),cur_rotation) - np.dot(cur_rotation.transpose(),target_rotation)
         rot_e = np.array([rot_matrix_e[2, 1], rot_matrix_e[0, 2], rot_matrix_e[1, 0]]) 
         rpy_rates_e = target_rpy_rates - (cur_rpy - self.last_rpy)/control_timestep
@@ -355,8 +377,8 @@ class MPCControl(BaseControl):
                         cur_quat,
                         cur_vel,
                         cur_ang_vel,
-                        dt=0.01,
-                        horizon=10
+                        dt=1/48,
+                        horizon=3
                         ):
         """
         Improved MPC controller with correctly dimensioned weight matrices.
@@ -375,10 +397,10 @@ class MPCControl(BaseControl):
         cur_rpy = p.getEulerFromQuaternion(cur_quat)
 
         # Assemble current state
-        cur_state = np.hstack((cur_pos, cur_vel, cur_rpy, cur_ang_vel))
+        cur_state = np.hstack((cur_pos, cur_vel,cur_rpy[2], cur_ang_vel[2]))
 
         # Target state must be reshaped to match dimensions (12,)
-        target_state = target_state[:12]
+        target_state = target_state[:8]
 
         # Get state and input dimensions from the discretized matrices
         nx = self.Ad.shape[0]  # State dimension (12)
@@ -389,11 +411,16 @@ class MPCControl(BaseControl):
         X = cp.Variable((nx, horizon + 1))  # States over the horizon
 
         # Correctly dimensioned cost matrices
-        Q = np.diag([10, 10, 10,  # Position weights
-                    1, 1, 1,    # Velocity weights
-                    5, 5, 5,    # Orientation weights (roll, pitch, yaw)
-                    1, 1, 1])   # Angular velocity weights
-        R = np.diag([0.5, 0.5, 0.5, 0.5])  # Input effort weights
+        Q = np.diag([100, 100, 100,  # Position weights
+                          10, 10, 10,     # Velocity weights
+                          10, 1])         # Yaw and yaw_rate weights
+        R = np.diag([1, 1, 1, 10])   # Control effort weights
+        # Q = np.diag([1000, 1000, 10,  # Position weights
+        #             1000, 1000, 10,    # Velocity weights
+        #             10, 10, 10,    # Orientation weights (roll, pitch, yaw)
+        #             10, 10, 10])   # Angular velocity weights
+        # #          Total thrust, torque x, torque y, torque z
+        # R = np.diag([0.01,        1,      1,      1000])  # Input effort weights
 
         # Initial state constraint
         constraints = [X[:, 0] == cur_state.flatten()]
@@ -415,6 +442,10 @@ class MPCControl(BaseControl):
         # Extract the first control input
         if prob.status in ["optimal", "optimal_inaccurate"]:
             u = U.value[:, 0]
+            thrust = self.m * (u[2] + 9.81)  # Total thrust
+            roll_torque = self.m * u[0]       # Torque in x (roll)
+            pitch_torque = self.m * u[1]      # Torque in y (pitch)
+            yaw_torque = u[3]
         else:
             raise ValueError("MPC optimization problem could not be solved.")
 

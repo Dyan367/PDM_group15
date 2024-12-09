@@ -152,7 +152,7 @@ def main():
             distance = np.linalg.norm(pos_error)
 
             # Move to the next waypoint if close enough
-            if distance < 0.2:
+            if distance < 0.1:
                 waypoint_idx += 1
                 continue
 
@@ -162,6 +162,7 @@ def main():
             #velocity_command = direction * speed
 
             target_state[0,:3] = target_pos #np.hstack((velocity_command, [target_speed]))
+            
         else:
 
             target_state[0,:3] = target_pos
@@ -169,16 +170,24 @@ def main():
 
         obs, reward, terminated, truncated, info = env.step(target_state[0,:])
 
+        pr = obs[0]
+        # print("Position (x, y, z):", pr[:3])
+        # print("Quaternion (qx, qy, qz, qw):", pr[3:7])
+        # print("Orientation (roll, pitch, yaw):", pr[7:10])
+        # print("Linear Velocity (vx, vy, vz):", pr[10:13])
+        # print("Angular Velocity (wx, wy, wz):", pr[13:16])
+        # print("Last Clipped Action:", pr[16:])
 
-        logger.log(
-            drone=0,
-            timestamp=i * env.CTRL_TIMESTEP,
-            state=obs[0],
-            control=np.hstack([target_pos, np.zeros(9)])
-        )
+        # logger.log(
+        #     drone=0,
+        #     timestamp=i * env.CTRL_TIMESTEP,
+        #     state=obs[0],
+        #     control=np.hstack([target_pos, np.zeros(9)])
+        # )
 
 
-        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        print(f"Step {i}, Position: {current_pos}")
+        print(f"Waypoint Position: {target_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
 
         if terminated or truncated:
