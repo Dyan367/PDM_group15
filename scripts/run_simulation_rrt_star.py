@@ -33,7 +33,7 @@ def main():
         obstacles=True,
         user_debug_gui=False,
         obstacle_config={
-            'num_obstacles': 150,
+            'num_obstacles': 1,
             'obstacle_radius': 0.3,
             'arena_size': 10.0
         },
@@ -62,9 +62,9 @@ def main():
     y_range = [-arena_size/2, arena_size/2]
     z_range = [0.5, 2.0]
 
-    goal_x = np.random.uniform(-arena_size / 2, arena_size / 2)
-    goal_y = np.random.uniform(-arena_size / 2, arena_size / 2)
-    goal_z = np.random.uniform(0.5, 2.5)
+    goal_x = 4.8 #np.random.uniform(-arena_size / 2, arena_size / 2)
+    goal_y = 4.8 #np.random.uniform(-arena_size / 2, arena_size / 2)
+    goal_z = 2.5 #np.random.uniform(0.5, 2.5)
     goal_pos = np.array([goal_x, goal_y, goal_z])
 
     goal_radius = 0.1
@@ -137,8 +137,8 @@ def main():
     # Prepare for simulation
     waypoints = np.array(path)
     waypoint_idx = 0
-    target_speed = 1.0  
-    action = np.zeros((1, 4))
+    target_speed = 3.0  
+    target_state = np.zeros((1, 13))
 
     # Run the simulation
     for i in range(num_steps):
@@ -156,16 +156,17 @@ def main():
                 continue
 
             # Compute velocity command
-            direction = pos_error / distance
-            speed = min(distance, env.SPEED_LIMIT)
-            velocity_command = direction * speed
-            action[0, :] = np.hstack((velocity_command, [target_speed]))
+            #direction = pos_error / distance
+            #speed = min(distance, env.SPEED_LIMIT)
+            #velocity_command = direction * speed
+
+            target_state[0, :] = obs[0][0:13] #np.hstack((velocity_command, [target_speed]))
         else:
 
-            action[0, :] = np.array([0.0, 0.0, 0.0, 0.0])
+            target_state[0, :] = obs[0][0:13]
 
 
-        obs, reward, terminated, truncated, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(target_state)
 
 
         logger.log(

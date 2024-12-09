@@ -70,94 +70,94 @@ class RRTStarPlanner:
         min_index = distances.index(min(distances))
         return node_list[min_index]
 
-    ## BASIC STEER FUNCTION
-    # def steer(self, from_node, to_point):
-    #     ### Creates new node and path in the direction 
-    #     # from the nearest node to the new node limited
-    #     # by the step size
-    #     direction = to_point - from_node.position
-    #     distance = np.linalg.norm(direction)
-    #     if distance > self.step_size:
-    #         direction = (direction / distance) * self.step_size
-    #     new_position = from_node.position + direction
-    #     new_node = Node(new_position)
-    #     new_node.parent = from_node
-    #     new_node.cost = from_node.cost + np.linalg.norm(new_node.position - from_node.position)
-    #     return new_node
-
-    ## APPROXIMATE STEER USING SIMULATION MODEL
+    # BASIC STEER FUNCTION
     def steer(self, from_node, to_point):
-        """
-        Steers the quadrotor using DSLPIDControl for position and attitude control.
-
-        Parameters
-        ----------
-        from_node : Node
-            The starting node of the motion.
-        to_point : ndarray
-            The target position to steer towards.
-
-        Returns
-        -------
-        Node
-            The new node reached using the steering action.
-        """
-        # Initialize PID controller
-        pid_controller = DSLPIDControl(drone_model=DroneModel.CF2X, g=9.81)
-
-        # Simulation parameters
-        control_timestep = 0.01  # Time step for the control loop (s)
-        max_time = 1.0  # Maximum time allowed for steering (s)
-        time_elapsed = 0
-
-        # Initialize the quadrotor state
-        cur_pos = np.array(from_node.position)
-        cur_vel = np.zeros(3)
-        cur_quat = np.array([1, 0, 0, 0])  # Neutral orientation (w, x, y, z)
-        cur_ang_vel = np.zeros(3)
-
-        # Initialize target state
-        target_pos = np.array(to_point)
-        target_rpy = np.zeros(3)  # Assuming flat orientation
-
-        path = [cur_pos]
-
-        while time_elapsed < max_time:
-            # Compute control action
-            rpm, pos_e, yaw_error = pid_controller.computeControl(
-                control_timestep=control_timestep,
-                cur_pos=cur_pos,
-                cur_quat=cur_quat,
-                cur_vel=cur_vel,
-                cur_ang_vel=cur_ang_vel,
-                target_pos=target_pos,
-                target_rpy=target_rpy,
-            )
-
-            # Simulate the dynamics (simplified for illustration)
-            # Update position based on velocity
-            cur_vel += pos_e * control_timestep
-            cur_pos += cur_vel * control_timestep
-
-            # Update orientation (assuming no rotation for simplicity)
-            cur_quat = np.array([1, 0, 0, 0])
-
-            # Record the path
-            path.append(cur_pos)
-
-            # Check if we are close enough to the target
-            if np.linalg.norm(cur_pos - target_pos) < self.step_size:
-                break
-
-            time_elapsed += control_timestep
-
-        # Create a new node at the final position
-        new_position = np.array(path[-1])
+        ### Creates new node and path in the direction 
+        # from the nearest node to the new node limited
+        # by the step size
+        direction = to_point - from_node.position
+        distance = np.linalg.norm(direction)
+        if distance > self.step_size:
+            direction = (direction / distance) * self.step_size
+        new_position = from_node.position + direction
         new_node = Node(new_position)
         new_node.parent = from_node
-        new_node.cost = from_node.cost + np.linalg.norm(new_position - from_node.position)
-
+        new_node.cost = from_node.cost + np.linalg.norm(new_node.position - from_node.position)
         return new_node
+
+    ## APPROXIMATE STEER USING SIMULATION MODEL
+    # def steer(self, from_node, to_point):
+    #     """
+    #     Steers the quadrotor using DSLPIDControl for position and attitude control.
+
+    #     Parameters
+    #     ----------
+    #     from_node : Node
+    #         The starting node of the motion.
+    #     to_point : ndarray
+    #         The target position to steer towards.
+
+    #     Returns
+    #     -------
+    #     Node
+    #         The new node reached using the steering action.
+    #     """
+    #     # Initialize PID controller
+    #     pid_controller = DSLPIDControl(drone_model=DroneModel.CF2X, g=9.81)
+
+    #     # Simulation parameters
+    #     control_timestep = 0.01  # Time step for the control loop (s)
+    #     max_time = 1.0  # Maximum time allowed for steering (s)
+    #     time_elapsed = 0
+
+    #     # Initialize the quadrotor state
+    #     cur_pos = np.array(from_node.position)
+    #     cur_vel = np.zeros(3)
+    #     cur_quat = np.array([1, 0, 0, 0])  # Neutral orientation (w, x, y, z)
+    #     cur_ang_vel = np.zeros(3)
+
+    #     # Initialize target state
+    #     target_pos = np.array(to_point)
+    #     target_rpy = np.zeros(3)  # Assuming flat orientation
+
+    #     path = [cur_pos]
+
+    #     while time_elapsed < max_time:
+    #         # Compute control action
+    #         rpm, pos_e, yaw_error = pid_controller.computeControl(
+    #             control_timestep=control_timestep,
+    #             cur_pos=cur_pos,
+    #             cur_quat=cur_quat,
+    #             cur_vel=cur_vel,
+    #             cur_ang_vel=cur_ang_vel,
+    #             target_pos=target_pos,
+    #             target_rpy=target_rpy,
+    #         )
+
+    #         # Simulate the dynamics (simplified for illustration)
+    #         # Update position based on velocity
+    #         cur_vel += pos_e * control_timestep
+    #         cur_pos += cur_vel * control_timestep
+
+    #         # Update orientation (assuming no rotation for simplicity)
+    #         cur_quat = np.array([1, 0, 0, 0])
+
+    #         # Record the path
+    #         path.append(cur_pos)
+
+    #         # Check if we are close enough to the target
+    #         if np.linalg.norm(cur_pos - target_pos) < self.step_size:
+    #             break
+
+    #         time_elapsed += control_timestep
+
+    #     # Create a new node at the final position
+    #     new_position = np.array(path[-1])
+    #     new_node = Node(new_position)
+    #     new_node.parent = from_node
+    #     new_node.cost = from_node.cost + np.linalg.norm(new_position - from_node.position)
+
+    #     return new_node
 
     ## BASIC CHECK COLLISION FUNCTION
     def basic_check_collision(self, p1, p2):
