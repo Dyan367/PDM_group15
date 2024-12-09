@@ -37,7 +37,8 @@ def main():
             'obstacle_radius': 0.3,
             'arena_size': 10.0
         },
-        seed=40
+        seed=40,
+        dt=1/48 ## dt for discretization of state space
     )
     obs, info = env.reset()
 
@@ -138,7 +139,7 @@ def main():
     waypoints = np.array(path)
     waypoint_idx = 0
     target_speed = 3.0  
-    target_state = np.zeros((1, 13))
+    target_state = np.zeros((1,13))
 
     # Run the simulation
     for i in range(num_steps):
@@ -160,13 +161,13 @@ def main():
             #speed = min(distance, env.SPEED_LIMIT)
             #velocity_command = direction * speed
 
-            target_state[0, :] = obs[0][0:13] #np.hstack((velocity_command, [target_speed]))
+            target_state[0,:3] = target_pos #np.hstack((velocity_command, [target_speed]))
         else:
 
-            target_state[0, :] = obs[0][0:13]
+            target_state[0,:3] = target_pos
 
 
-        obs, reward, terminated, truncated, info = env.step(target_state)
+        obs, reward, terminated, truncated, info = env.step(target_state[0,:])
 
 
         logger.log(

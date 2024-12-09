@@ -11,9 +11,10 @@ from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 class StaticFactory(MPCAviary):
 
 
-    def __init__(self, obstacle_config={}, seed=42, **kwargs):
+    def __init__(self, dt = 0.01,obstacle_config={}, seed=42, **kwargs):
         self.obstacle_config = obstacle_config
         self.seed = seed
+        self.dt = dt ## dt for discretization of state space
         super().__init__(**kwargs)
 
     def reset(self):
