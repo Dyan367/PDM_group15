@@ -141,33 +141,66 @@ class RRTStarPlanner:
         path.reverse()
         return path
 
-    #### Needs debugging ####
-    def draw_tree(self, show=True):
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-            # Plot the edges
-            for edge in self.edge_list:
-                parent_node, child_node = edge
-                x_vals = [parent_node.position[0], child_node.position[0]]
-                y_vals = [parent_node.position[1], child_node.position[1]]
-                z_vals = [parent_node.position[2], child_node.position[2]]
-                ax.plot(x_vals, y_vals, z_vals, color='blue', linewidth=0.5)
+    def draw_tree(self, path=None, show=True):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
 
+        # Plot the edges of the RRT* tree
+        for edge in self.edge_list:
+            parent_node, child_node = edge
+            x_vals = [parent_node.position[0], child_node.position[0]]
+            y_vals = [parent_node.position[1], child_node.position[1]]
+            z_vals = [parent_node.position[2], child_node.position[2]]
+            ax.plot(x_vals, y_vals, z_vals, color='blue', linewidth=0.5)
 
-            # Plot the start and goal nodes
-            ax.scatter(self.start.position[0], self.start.position[1], self.start.position[2], color='green', marker='o', s=100, label='Start')
-            ax.scatter(self.goal.position[0], self.goal.position[1], self.goal.position[2], color='red', marker='*', s=100, label='Goal')
+        # Plot the obstacles
+        for obs in self.obstacles:
+            center = obs['position']
+            size = obs['size']
 
-            # Set labels and legend
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title('RRT* Tree')
-            ax.legend()
+            # Plot the obstacle as a cube
+            # The obstacle center is at `center`, and its size is `size`
+            # The corners of the cube can be computed by extending the size along the 3 axes
+            x = [center[0] - size[0] / 2, center[0] + size[0] / 2]
+            y = [center[1] - size[1] / 2, center[1] + size[1] / 2]
+            z = [center[2] - size[2] / 2, center[2] + size[2] / 2]
 
-            # Set equal aspect ratio
-            ax.set_box_aspect([np.ptp(a) for a in [self.x_range, self.y_range, self.z_range]])
+            # Draw the lines for the obstacle (cube)
+            ax.plot([x[0], x[1]], [y[0], y[0]], [z[0], z[0]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[0], x[1]], [y[0], y[0]], [z[1], z[1]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[0], x[1]], [y[1], y[1]], [z[0], z[0]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[0], x[1]], [y[1], y[1]], [z[1], z[1]], color='red', linewidth=1, alpha=0.7)
 
+            ax.plot([x[0], x[0]], [y[0], y[1]], [z[0], z[0]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[0], x[0]], [y[0], y[1]], [z[1], z[1]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[1], x[1]], [y[0], y[1]], [z[0], z[0]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[1], x[1]], [y[0], y[1]], [z[1], z[1]], color='red', linewidth=1, alpha=0.7)
 
-            if show:
-                plt.show()
+            ax.plot([x[0], x[0]], [y[0], y[0]], [z[0], z[1]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[1], x[1]], [y[0], y[0]], [z[0], z[1]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[0], x[0]], [y[1], y[1]], [z[0], z[1]], color='red', linewidth=1, alpha=0.7)
+            ax.plot([x[1], x[1]], [y[1], y[1]], [z[0], z[1]], color='red', linewidth=1, alpha=0.7)
+
+        # Plot the start and goal nodes
+        ax.scatter(self.start.position[0], self.start.position[1], self.start.position[2], color='green', marker='o',
+                   s=100, label='Start')
+        ax.scatter(self.goal.position[0], self.goal.position[1], self.goal.position[2], color='red', marker='*', s=100,
+                   label='Goal')
+
+        # Plot the final path if it exists
+        if path is not None:
+            path_array = np.array(path)
+            ax.plot(path_array[:, 0], path_array[:, 1], path_array[:, 2], color='orange', label='Path')
+
+        # Set labels and legend
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('RRT* Tree and Path')
+        ax.legend()
+
+        # Set equal aspect ratio
+        ax.set_box_aspect([np.ptp(a) for a in [self.x_range, self.y_range, self.z_range]])
+
+        if show:
+            plt.show()

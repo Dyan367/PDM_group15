@@ -204,7 +204,7 @@ def main():
     ax.scatter(start_pos[0], start_pos[1], start_pos[2], color='green', label="Start", s=50)
     ax.scatter(goal_pos[0], goal_pos[1], goal_pos[2], color='red', label="Goal", s=50)
 
-    # Add labels and legend
+    # Add labels and legend`
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
