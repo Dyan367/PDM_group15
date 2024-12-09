@@ -159,14 +159,14 @@ class MPCAviary(BaseAviary):
             #     v_unit_vector = target_v[0:3] / np.linalg.norm(target_v[0:3])
             # else:
             #     v_unit_vector = np.zeros(3)
-            temp, _, _ = self.ctrl[k].computeControl(control_timestep=self.CTRL_TIMESTEP,
+            temp, _ = self.ctrl[k].computeControl(control_timestep=self.CTRL_TIMESTEP,
                                                     cur_pos=state[0:3],
                                                     cur_quat=state[3:7],
                                                     cur_vel=state[10:13],
                                                     cur_ang_vel=state[13:16],
                                                     target_pos= target_pos,  #state[0:3], # same as the current position
-                                                    target_rpy= np.array([0.01,0.01,state[9]]), # keep current yaw
-                                                    target_vel= np.array([0.5,0.5,0.5]),
+                                                    target_rpy= np.array([0.0,0.0,state[9]]), # keep current yaw
+                                                    target_vel= np.array([0.0,0.0,0.0]),
                                                     target_state=target_state,   #self.SPEED_LIMIT * np.abs(target_v[3]) * v_unit_vector # target the desired velocity vector
                                                     )
             rpm[k,:] = temp

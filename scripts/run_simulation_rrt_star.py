@@ -37,8 +37,7 @@ def main():
             'obstacle_radius': 0.3,
             'arena_size': 10.0
         },
-        seed=40,
-        dt=1/48 ## dt for discretization of state space
+        seed=40
     )
     obs, info = env.reset()
 
@@ -63,9 +62,9 @@ def main():
     y_range = [-arena_size/2, arena_size/2]
     z_range = [0.5, 2.0]
 
-    goal_x = 4.8 #np.random.uniform(-arena_size / 2, arena_size / 2)
-    goal_y = 4.8 #np.random.uniform(-arena_size / 2, arena_size / 2)
-    goal_z = 2.5 #np.random.uniform(0.5, 2.5)
+    goal_x = np.random.uniform(-arena_size / 2, arena_size / 2)
+    goal_y = np.random.uniform(-arena_size / 2, arena_size / 2)
+    goal_z = np.random.uniform(0.5, 2.5)
     goal_pos = np.array([goal_x, goal_y, goal_z])
 
     goal_radius = 0.1
@@ -117,29 +116,17 @@ def main():
             physicsClientId=env.CLIENT
         )
 
-    # path = planner.compute_bspline_path(path,degree=2, num_points=100)
-
     if path is None:
         print("Failed to find a path!")
         env.close()
         return
-
-    # # Visualize the bspline path
-    # for i in range(len(path) - 1):
-    #     p.addUserDebugLine(
-    #         lineFromXYZ=path[i],
-    #         lineToXYZ=path[i+1],
-    #         lineColorRGB=[0, 0, 1],
-    #         lifeTime=0,
-    #         physicsClientId=env.CLIENT
-    #     )
     
 
     # Prepare for simulation
     waypoints = np.array(path)
     waypoint_idx = 0
-    target_speed = 3.0  
-    target_state = np.zeros((1,13))
+    target_speed = 1.0  
+    action = np.zeros((1, 4))
 
     # Run the simulation
     for i in range(num_steps):
@@ -152,42 +139,29 @@ def main():
             distance = np.linalg.norm(pos_error)
 
             # Move to the next waypoint if close enough
-            if distance < 0.1:
+            if distance < 0.2:
                 waypoint_idx += 1
                 continue
 
-            # Compute velocity command
-            #direction = pos_error / distance
-            #speed = min(distance, env.SPEED_LIMIT)
-            #velocity_command = direction * speed
-
-            target_state[0,:3] = target_pos #np.hstack((velocity_command, [target_speed]))
             
+            action[0, :] = np.array([target_pos[0],target_pos[1],target_pos[2],0.0])
         else:
 
-            target_state[0,:3] = target_pos
+            action[0, :] = np.array([0.0, 0.0, 0.0, 0.0])
 
 
-        obs, reward, terminated, truncated, info = env.step(target_state[0,:])
-
-        pr = obs[0]
-        # print("Position (x, y, z):", pr[:3])
-        # print("Quaternion (qx, qy, qz, qw):", pr[3:7])
-        # print("Orientation (roll, pitch, yaw):", pr[7:10])
-        # print("Linear Velocity (vx, vy, vz):", pr[10:13])
-        # print("Angular Velocity (wx, wy, wz):", pr[13:16])
-        # print("Last Clipped Action:", pr[16:])
-
-        # logger.log(
-        #     drone=0,
-        #     timestamp=i * env.CTRL_TIMESTEP,
-        #     state=obs[0],
-        #     control=np.hstack([target_pos, np.zeros(9)])
-        # )
+        obs, reward, terminated, truncated, info = env.step(action)
 
 
-        print(f"Step {i}, Position: {current_pos}")
-        print(f"Waypoint Position: {target_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        logger.log(
+            drone=0,
+            timestamp=i * env.CTRL_TIMESTEP,
+            state=obs[0],
+            control=np.hstack([target_pos, np.zeros(9)])
+        )
+
+
+        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
 
         if terminated or truncated:
