@@ -131,6 +131,8 @@ def main():
     target_speed = 1.0  
     action = np.zeros((1, 4))
 
+
+    ## HERE TUNE MPC PARAMETERS and initialie MPC class
     Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
     R = np.diag([0.1, 0.1,0.05])  # Input weights
     MPC = Simple_MPC(Q=Q, R=R)
@@ -141,6 +143,7 @@ def main():
 
         current_pos = obs[0][0:3]
         current_vel = obs[0][3:6]
+
         if waypoint_idx < len(waypoints):
             target_pos = waypoints[waypoint_idx]
             pos_error = target_pos - current_pos
@@ -152,16 +155,16 @@ def main():
                 continue
             
             current_state = np.hstack([current_pos, current_vel])
-            des_state = np.hstack([target_pos, np.zeros(3)])
-            u,predicted_states = MPC.compute_mpc_control(
+            des_state = np.hstack([target_pos, np.zeros(3)]) # state vector is [x,y,z,vx,vy,vz]
+
+            u_opt,predicted_states = MPC.compute_mpc_control(
                 x0=current_state,
                 x_ref=des_state,
-                N=3
+                N=3 #Horizon
             )
             
-            
-            print("MPC Output",u)
-            action[0, :] = np.hstack((u, [target_speed]))
+            print("MPC Output [vx,vy,vz]",u_opt)
+            action[0, :] = np.hstack((u_opt, [target_speed]))
             
         else:
             #hover at last waypoint
