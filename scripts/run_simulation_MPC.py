@@ -11,7 +11,79 @@ from planners.rrt_star_planner import RRTStarPlanner
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.utils.Logger import Logger
 from bvh.bvh import BVHNode, build_bvh
-from control.MPCController import Simple_MPC
+
+def quintic_trajectory(start, end, T, dt=0.01):
+    """
+    Generates a quintic trajectory between two points in 3D space.
+
+    Parameters:
+        start (dict): A dictionary with keys `position`, `velocity`, and `acceleration`, each containing
+                      a list or numpy array of size 3 (x, y, z components).
+        end (dict): A dictionary with the same keys as `start`.
+        T (float): The total time for the trajectory.
+        dt (float): Time step for the trajectory.
+
+    Returns:
+        tuple: A tuple containing three numpy arrays:
+               - An array of shape (N, 3), where N is the number of time steps, containing
+                 the trajectory points for x, y, and z.
+               - An array of shape (N, 3), containing the velocity trajectory for x, y, and z.
+               - An array of shape (N, 3), containing the acceleration trajectory for x, y, and z.
+    """
+    def compute_coefficients(p0, v0, a0, pT, vT, aT, T):
+        # Solve for the coefficients of the quintic polynomial
+        A = np.array([
+            [1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0],
+            [0, 0, 2, 0, 0, 0],
+            [1, T, T**2, T**3, T**4, T**5],
+            [0, 1, 2*T, 3*T**2, 4*T**3, 5*T**4],
+            [0, 0, 2, 6*T, 12*T**2, 20*T**3]
+        ])
+        
+        b = np.array([p0, v0, a0, pT, vT, aT])
+        
+        return np.linalg.solve(A, b)
+
+    # Preallocate trajectory
+    timesteps = np.arange(0, T + dt, dt)
+    trajectory = np.zeros((len(timesteps), 3))
+    velocity = np.zeros((len(timesteps), 3))
+    acceleration = np.zeros((len(timesteps), 3))
+
+    for i, coord in enumerate(['x', 'y', 'z']):
+        p0, v0, a0 = start['position'][i], start['velocity'][i], start['acceleration'][i]
+        pT, vT, aT = end['position'][i], end['velocity'][i], end['acceleration'][i]
+
+        # Get the coefficients for the current coordinate
+        coeffs = compute_coefficients(p0, v0, a0, pT, vT, aT, T)
+
+        # Evaluate the polynomial, its derivative, and second derivative at each time step
+        trajectory[:, i] = (
+            coeffs[0] +
+            coeffs[1] * timesteps +
+            coeffs[2] * timesteps**2 +
+            coeffs[3] * timesteps**3 +
+            coeffs[4] * timesteps**4 +
+            coeffs[5] * timesteps**5
+        )
+
+        velocity[:, i] = (
+            coeffs[1] +
+            2 * coeffs[2] * timesteps +
+            3 * coeffs[3] * timesteps**2 +
+            4 * coeffs[4] * timesteps**3 +
+            5 * coeffs[5] * timesteps**4
+        )
+
+        acceleration[:, i] = (
+            2 * coeffs[2] +
+            6 * coeffs[3] * timesteps +
+            12 * coeffs[4] * timesteps**2 +
+            20 * coeffs[5] * timesteps**3
+        )
+
+    return trajectory, velocity, acceleration
 
 
 def main():
@@ -126,47 +198,46 @@ def main():
 
     # Prepare for simulation
     #waypoints = np.array(path)
-    waypoints = np.array([[0.0,0.0,1.2],[0.5,0.5,1.2],[0.5,0.5,1.2]])
-    waypoint_idx = 0
+    #waypoints = np.array([[1.0,1.0,0.5],[1.5,1.5,0.5]])
+    #waypoint_idx = 0
     target_speed = 1.0  
-    action = np.zeros((1, 3))
-    # Cost function and constraints
-    Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
-    R = np.diag([0.1, 0.1,0.05])  # Input weights
+    action = np.zeros((1, 4))
+    start_point = {
+    'position': start_pos,
+    'velocity': [0, 0, 0],
+    'acceleration': [0, 0, 0]
+    }
+    end_point = {
+        'position': [5.0, 5.0, 1.0],
+        'velocity': [0, 0, 0],
+        'acceleration': [0, 0, 0]
+    }
 
-    MPC = Simple_MPC(Q=Q, R=R)
-
+    trajectory, velocity, acceleration = quintic_trajectory(start_point, end_point, 0.5)
+    trajectory_idx = 0
     # Run the simulation
     for i in range(num_steps):
         start_time = time.time()
 
         current_pos = obs[0][0:3]
-        current_vel = obs[0][3:6]
-        if waypoint_idx < len(waypoints):
-            target_pos = waypoints[waypoint_idx]
-            pos_error = target_pos - current_pos
+        if trajectory_idx < len(trajectory):
+            action = np.zeros(9)
+            action[0:3] = trajectory[trajectory_idx]  # [x, y, z]
+            action[3:6] = velocity[trajectory_idx]  # [dx, dy, dz]
+            action[6:9] = acceleration[trajectory_idx]  # [ddx, ddy, ddz]
+
+            pos_error = action[0:3]  - current_pos
             distance = np.linalg.norm(pos_error)
-
-            # Move to the next waypoint if close enough
-            if distance < 0.05:
-                waypoint_idx += 1
-                continue   
-
-            current_state = np.hstack([current_pos, current_vel])
-            des_state = np.hstack([target_pos, target_speed * pos_error / distance])
-            thrust_vector = MPC.compute_mpc_control(
-                x0=current_state,
-                x_ref=des_state,
-                N=5
-            )
-
-            #thrust_vector[2] += 0.027000*9.81 
-
-            action[0, :] = thrust_vector
-            print(waypoint_idx)
+            print(f"Distance: {distance}")
+            if distance < 0.2:
+                trajectory_idx += 1
+                print(f"Waypoint {trajectory_idx}/{len(trajectory)}")
+            
         else:
 
-            action[0, :] = np.array([0.0, 0.0, 0.01])
+            action[0:3] = trajectory[-1]  # [x, y, z]
+            action[3:6] = np.array([0.0,0.0,0.0])  # [dx, dy, dz]
+            action[6:9] = np.array([0.0,0.0,0.0])  # [ddx, ddy, ddz]
 
 
         obs, reward, terminated, truncated, info = env.step(action)
@@ -176,11 +247,11 @@ def main():
             drone=0,
             timestamp=i * env.CTRL_TIMESTEP,
             state=obs[0],
-            control=np.hstack([target_pos, np.zeros(9)])
+            control=np.hstack([action[0:3] , np.zeros(9)])
         )
 
 
-        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        #print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
 
         if terminated or truncated:

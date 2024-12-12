@@ -129,7 +129,7 @@ class MPCAviary(BaseAviary):
     ################################################################################
 
     def _preprocessAction(self,
-                          target_state
+                          action
                           ):
         """Pre-processes the action passed to `.step()` into motors' RPMs.
 
@@ -151,9 +151,7 @@ class MPCAviary(BaseAviary):
         for k in range(1):
             #### Get the current state of the drone  ###################
             state = self._getDroneStateVector(k)
-            target_pos = target_state[:3]
-            target_vel = target_state[10:13]
-            target_rpy = target_state[7:10]
+            thrust_vector = action
             #### Normalize the first 3 components of the target velocity
             # if np.linalg.norm(target_v[0:3]) != 0:
             #     v_unit_vector = target_v[0:3] / np.linalg.norm(target_v[0:3])
@@ -164,10 +162,10 @@ class MPCAviary(BaseAviary):
                                                     cur_quat=state[3:7],
                                                     cur_vel=state[10:13],
                                                     cur_ang_vel=state[13:16],
-                                                    target_pos= target_pos,  #state[0:3], # same as the current position
+                                                    target_pos= np.array([0.0,0.0,0.0]),  #state[0:3], # same as the current position
                                                     target_rpy= np.array([0.0,0.0,state[9]]), # keep current yaw
-                                                    target_vel= np.array([0.0,0.0,0.0]),
-                                                    target_state=target_state,   #self.SPEED_LIMIT * np.abs(target_v[3]) * v_unit_vector # target the desired velocity vector
+                                                    thrust_vector=thrust_vector
+                                                       #self.SPEED_LIMIT * np.abs(target_v[3]) * v_unit_vector # target the desired velocity vector
                                                     )
             rpm[k,:] = temp
         return rpm

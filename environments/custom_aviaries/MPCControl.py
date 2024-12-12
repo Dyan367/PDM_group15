@@ -90,7 +90,7 @@ class MPCControl(BaseControl):
         self.linear_drone_B[7, 1] = 1 / self.I_z  # Torque affects yaw acceleration
 
         self.dt = 1/48
-        self.Ad, self.Bd = discretize_tustin(self.linear_drone_A,self.linear_drone_B, 0.01)
+        #self.Ad, self.Bd = discretize_tustin(self.linear_drone_A,self.linear_drone_B, 0.01)
 
         self.reset()
 
@@ -119,10 +119,10 @@ class MPCControl(BaseControl):
                        cur_quat,
                        cur_vel,
                        cur_ang_vel,
-                       target_state,
                        target_pos,
-                       target_rpy=np.zeros(3),
-                       target_vel=np.zeros(3),
+                       target_rpy,
+                       
+                       thrust_vector,
                        target_rpy_rates=np.zeros(3),
                        ):
         """Computes the PID control action (as RPMs) for a single drone.
@@ -162,25 +162,25 @@ class MPCControl(BaseControl):
 
         """
         self.control_counter += 1
-        des_total_thrust, des_tau_z, des_roll, des_pitch = self._MPCController(target_state,
-                                                                                cur_pos,
-                                                                                cur_quat,
-                                                                                cur_vel,
-                                                                                cur_ang_vel,
-                                                                                dt=self.dt
-                                                                                )
+        # #des_total_thrust, des_tau_z, des_roll, des_pitch = self._MPCController( cur_pos,
+        #                                                                         cur_quat,
+        #                                                                         cur_vel,
+        #                                                                         cur_ang_vel,
+        #                                                                         target_pos=target_pos,
+        #                                                                         target_vel=target_vel,
+        #                                                                         target_acc=target_acc,
+        #                                                                         dt=self.dt
+        #                                                                         )
         
         
         thrust, computed_target_rpy = self._MPCPositionControl(control_timestep,
                                                                          cur_pos,
                                                                          cur_quat,
                                                                          cur_vel,
-                                                                         target_pos,
+                                                                         
                                                                          target_rpy,
-                                                                         target_vel,
-                                                                         des_total_thrust,
-                                                                         des_roll,
-                                                                         des_pitch
+                                                                         
+                                                                         thrust_vector
                                                                          )
         rpm = self._MPCAttitudeControl(control_timestep,
                                           thrust,
@@ -198,12 +198,10 @@ class MPCControl(BaseControl):
                                cur_pos,
                                cur_quat,
                                cur_vel,
-                               target_pos,
+                               
                                target_rpy,
-                               target_vel,
-                               des_total_thrust,
-                               des_roll,
-                               des_pitch
+                               
+                               thrust_vector
                                ):
         """DSL's CF2.x PID position control.
 
@@ -238,7 +236,8 @@ class MPCControl(BaseControl):
         
         
         #### MPC target thrust #####################################
-        target_thrust = [0.0,0.0,des_total_thrust]
+        target_thrust = thrust_vector
+        print("thrust:",target_thrust)
         scalar_thrust = max(0., np.dot(target_thrust, cur_rotation[:,2]))
 
         thrust = (math.sqrt(scalar_thrust / (4*self.KF)) - self.PWM2RPM_CONST) / self.PWM2RPM_SCALE
@@ -250,13 +249,8 @@ class MPCControl(BaseControl):
         target_x_ax = np.cross(target_y_ax, target_z_ax)
         target_rotation = (np.vstack([target_x_ax, target_y_ax, target_z_ax])).transpose()
         #### Target rotation #######################################
-        #target_euler = (Rotation.from_matrix(target_rotation)).as_euler('XYZ', degrees=False)
-        
-        # euler_angles = np.array([des_roll, des_pitch, target_rpy[2]])
-        # target_euler = Rotation.from_euler('XYZ', euler_angles, degrees=False)
-        target_euler = np.array([des_roll, des_pitch, target_rpy[2]])
-        # # Convert to a rotation matrix
-        # target_euler = target_euler.as_matrix()
+        target_euler = (Rotation.from_matrix(target_rotation)).as_euler('XYZ', degrees=False)
+        print("rpy",target_euler)
         if np.any(np.abs(target_euler) > math.pi):
             print("\n[ERROR] ctrl it", self.control_counter, "in Control._MPCPositionControl(), values outside range [-pi,pi]")
         return thrust, target_euler
@@ -303,10 +297,11 @@ class MPCControl(BaseControl):
         self.integral_rpy_e = self.integral_rpy_e - rot_e*control_timestep
         self.integral_rpy_e = np.clip(self.integral_rpy_e, -1500., 1500.)
         self.integral_rpy_e[0:2] = np.clip(self.integral_rpy_e[0:2], -1., 1.)
-        #### MPC target torques ####################################
+        #### PID target torques ####################################
         target_torques = - np.multiply(self.P_COEFF_TOR, rot_e) \
                          + np.multiply(self.D_COEFF_TOR, rpy_rates_e) \
                          + np.multiply(self.I_COEFF_TOR, self.integral_rpy_e)
+        target_torques = np.clip(target_torques, -3200, 3200)
         pwm = thrust + np.dot(self.MIXER_MATRIX, target_torques)
         pwm = np.clip(pwm, self.MIN_PWM, self.MAX_PWM)
         return self.PWM2RPM_SCALE * pwm + self.PWM2RPM_CONST
@@ -341,111 +336,120 @@ class MPCControl(BaseControl):
     
     ###############################################################################
 
-    def _MPCController(self, 
-                        target_state,
-                        cur_pos,
-                        cur_quat,
-                        cur_vel,
-                        cur_ang_vel,
-                        dt=1/48,
-                        horizon=10
-                        ):
-        """
-        Improved MPC controller with correctly dimensioned weight matrices.
+#     def _MPCController(self, 
+#                         cur_pos,
+#                         cur_quat,
+#                         cur_vel,
+#                         cur_ang_vel,
+#                         dt=0.01,
+#                         target_pos=np.zeros(3),
+#                         target_vel=np.zeros(3),
+#                         target_acc=np.zeros(3),
+#                         horizon=5
+#                         ):
+#         """
+#         Improved MPC controller with correctly dimensioned weight matrices.
 
-        Parameters
-        ----------
-        target_state : ndarray
-            (13,1)-shaped array of floats containing the desired state.
+#         Parameters
+#         ----------
+#         target_state : ndarray
+#             (13,1)-shaped array of floats containing the desired state.
 
-        Returns
-        -------
-        ndarray
-            (4,1)-shaped array of integers containing the target thrust and torque.
-        """
-        # Extract current roll, pitch, yaw from quaternion
-        cur_rpy = p.getEulerFromQuaternion(cur_quat)
+#         Returns
+#         -------
+#         ndarray
+#             (4,1)-shaped array of integers containing the target thrust and torque.
+#         """
+#         # Extract current roll, pitch, yaw from quaternion
+#         cur_rpy = p.getEulerFromQuaternion(cur_quat)
 
-        # Current state / initial state ! 
-        x0 = np.array([cur_pos[0], cur_pos[1], cur_pos[2], cur_rpy[2], cur_vel[0], cur_vel[1], cur_vel[2], cur_ang_vel[2]]) 
+#         # Current state / initial state ! 
+#         x0 = np.array([cur_pos[0], cur_pos[1], cur_pos[2], cur_rpy[2], cur_vel[0], cur_vel[1], cur_vel[2], cur_ang_vel[2]]) 
 
-        desired_position = np.array([1.0, 1.0, 1.0])  # Desired x, y, z position
-        desired_yaw = 0.0  # Desired yaw angle (rad)
-        x_des = np.hstack([desired_position, desired_yaw, [0, 0, 0, 0]])  # Desired state
+        
+#         desired_yaw = 0.0  # Desired yaw angle (rad)
+#         x_des = np.array([target_pos[0], target_pos[1], target_pos[2], desired_yaw, target_vel[0], target_vel[1], target_vel[2], 0.0])
 
-        # Get state and input dimensions from the discretized matrices
-        nx = self.Ad.shape[0]  # State dimension (12)
-        nu = self.Bd.shape[1]  # Control input dimension (4)
-        eigenvalues = np.linalg.eigvals(self.Ad)
-        if not np.all(np.abs(eigenvalues) < 1):
-            print("[ERROR] Discretized Ad matrix is unstable.")
+#         print("MPC x_des: ", x_des)
+#         # Get state and input dimensions from the discretized matrices
+#         nx = self.Ad.shape[0]  # State dimension (12)
+#         nu = self.Bd.shape[1]  # Control input dimension (4)
 
-        # Correctly dimensioned cost matrices
-        # Define optimization variables
-        X = cp.Variable((8, horizon + 1))  # States
-        U = cp.Variable((2, horizon))  # Inputs: thrust and yaw torque
+#         # Correctly dimensioned cost matrices
+#         # Define optimization variables
+#         X = cp.Variable((8, horizon + 1))  # States
+#         U = cp.Variable((2, horizon))  # Inputs: thrust and yaw torque
 
-        # Cost function and constraints
-        Q = np.diag([20, 20, 10, 1, 1, 1, 1, 1])  # State weights
-        R = np.diag([5, 0.1])  # Input weights
+#         # Cost function and constraints
+#         Q = np.diag([1000, 1000, 1000, 1, 1, 1, 1, 1])  # State weights
+#         R = np.diag([0.1, 0.1])  # Input weights
 
-        # Initial state constraint
-        constraints = [X[:, 0] == x0]
-        thrust_max = 2 * self.m * 9.81  # Maximum thrust (e.g., 2g)
+#         # Initial state constraint
+#         constraints = [X[:, 0] == x0]
+#         thrust_max = 2 * self.m * 9.81  # Maximum thrust (e.g., 2g)
 
-        # Cost function
-        cost = 0
-        for k in range(horizon):
-            # Cost function
-            cost += cp.quad_form(X[:, k] - x_des, Q) + cp.quad_form(U[:, k], R)
+#         # Cost function
+#         cost = 0
+#         for k in range(horizon):
+#             # Cost function
+#             cost += cp.quad_form(X[:, k] - x_des, Q) + cp.quad_form(U[:, k], R)
 
-            # Dynamics constraint
-            constraints += [X[:, k + 1] == self.Ad @ X[:, k] + self.Bd @ U[:, k]]
-            constraints += [U[0, k] >= 0, U[0, k] <= thrust_max]  # Thrust
+#             # Dynamics constraint
+#             constraints += [X[:, k + 1] == self.Ad @ X[:, k] + self.Bd @ U[:, k]]
+#             constraints += [U[0, k] >= 0, U[0, k] <= thrust_max]  # Thrust
 
         
 
-        cost += cp.quad_form(X[:, horizon] - x_des, Q)
+#         cost += cp.quad_form(X[:, horizon] - x_des, Q)
 
-        # Initial condition
-        constraints += [X[:, 0] == x0]
+#         # Initial condition
+#         constraints += [X[:, 0] == x0]
 
-        # Solve the problem
-        problem = cp.Problem(cp.Minimize(cost), constraints)
-        problem.solve()
+#         # Solve the problem
+#         problem = cp.Problem(cp.Minimize(cost), constraints)
+#         problem.solve()
 
-        # Check for solution
-        if problem.status == cp.OPTIMAL:
-            optimal_states = X.value
-            optimal_inputs = U.value
-            print("MPC U: ", optimal_inputs[:,0])
-        else:
-            print("No optimal solution found.")
+#         # Check for solution
+#         if problem.status == cp.OPTIMAL:
+#             optimal_states = X.value
+#             optimal_inputs = U.value
+#             #print("MPC U: ", optimal_inputs[:,0])
+#         else:
+#             print("No optimal solution found.")
 
-        ## Optimal thrust and yaw torque
-        des_total_thrust = optimal_inputs[0, 0]
-        des_tau_z = optimal_inputs[1, 0]
-        ## Using differential flatness !!!!!!!!! so we can compute roll and pitch and feed this to attitude controller
-        des_roll, des_pitch = compute_roll_pitch(optimal_states[4:7, 1], optimal_states[3, 1], self.m)
+#         ## Optimal thrust and yaw torque
+#         des_total_thrust = optimal_inputs[0, 0]
+#         des_tau_z = optimal_inputs[1, 0]
+#         ## Using differential flatness !!!!!!!!! so we can compute roll and pitch and feed this to attitude controller
+#         des_roll, des_pitch = compute_roll_pitch(target_acc, 0.0, self.m)
+#         print("MPC des_roll: ", des_roll, "MPC des_pitch: ", des_pitch,"MPC des_total_thrust: ", des_total_thrust)
 
-        return des_total_thrust, des_tau_z, des_roll, des_pitch
+#         return des_total_thrust, des_tau_z, des_roll, des_pitch
 
-## discretize the state-space matrices using the Tustin method for MPC controller
-def discretize_tustin(A, B, dt):
-    """Discretize the state-space matrices using the Tustin method."""
-    dt = 1/48
-    n = A.shape[0]
-    I = np.eye(n)
-    Ad = np.linalg.inv(I - 0.5 * A * dt) @ (I + 0.5 * A * dt)
-    Bd = np.linalg.inv(I - 0.5 * A * dt) @ (B * dt)
-    return Ad, Bd
+# ## discretize the state-space matrices using the Tustin method for MPC controller
+# def discretize_tustin(A, B, dt):
+#     """Discretize the state-space matrices using the Tustin method."""
+#     dt = 1/48
+#     n = A.shape[0]
+#     I = np.eye(n)
+#     Ad = np.linalg.inv(I - 0.5 * A * dt) @ (I + 0.5 * A * dt)
+#     Bd = np.linalg.inv(I - 0.5 * A * dt) @ (B * dt)
+#     return Ad, Bd
 
-## computes the desired roll and pitch angles based on output of MPC
-def compute_roll_pitch(acc_des, yaw, mass):
-    f_x, f_y, f_z = acc_des
-    f_z += 9.81  # Account for gravity
-    f = np.sqrt(f_x**2 + f_y**2 + f_z**2)
-    des_roll = np.arcsin((f_x * np.sin(yaw) - f_y * np.cos(yaw)) / f)
-    des_pitch = np.arctan2((f_x * np.cos(yaw) + f_y * np.sin(yaw)), f_z)
-    return des_roll, des_pitch
+# ## computes the desired roll and pitch angles based on output of MPC
+# def compute_roll_pitch(acc_des, yaw, mass):
+#     ax, ay, az = acc_des
+#     Fz = mass * (9.81 + az)
+#     Fx = mass * ax
+#     Fy = mass * ay
+
+#     # Transform forces to body frame
+#     Fx_b = Fx * np.cos(yaw) + Fy * np.sin(yaw)
+#     Fy_b = -Fx * np.sin(yaw) + Fy * np.cos(yaw)
+
+#     # Roll and Pitch calculations
+#     des_roll = np.arcsin(Fy_b / np.sqrt(Fx_b**2 + Fy_b**2 + Fz**2))
+#     des_pitch = np.arctan(Fx_b / Fz)
+    
+#     return des_roll, des_pitch
 
