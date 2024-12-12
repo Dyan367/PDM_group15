@@ -151,21 +151,24 @@ class MPCAviary(BaseAviary):
         for k in range(1):
             #### Get the current state of the drone  ###################
             state = self._getDroneStateVector(k)
-            thrust_vector = action
+            target_v = action[k,:]  
+            speed = 1.0 
             #### Normalize the first 3 components of the target velocity
-            # if np.linalg.norm(target_v[0:3]) != 0:
-            #     v_unit_vector = target_v[0:3] / np.linalg.norm(target_v[0:3])
-            # else:
-            #     v_unit_vector = np.zeros(3)
+            #### Normalize the first 3 components of the target velocity
+            if np.linalg.norm(target_v[0:3]) != 0:
+                v_unit_vector = target_v[0:3] / np.linalg.norm(target_v[0:3])
+            else:
+                v_unit_vector = np.zeros(3)
             temp, _ = self.ctrl[k].computeControl(control_timestep=self.CTRL_TIMESTEP,
                                                     cur_pos=state[0:3],
                                                     cur_quat=state[3:7],
                                                     cur_vel=state[10:13],
                                                     cur_ang_vel=state[13:16],
-                                                    target_pos= np.array([0.0,0.0,0.0]),  #state[0:3], # same as the current position
+                                                    target_pos= state[0:3],  #state[0:3], # same as the current position
                                                     target_rpy= np.array([0.0,0.0,state[9]]), # keep current yaw
-                                                    thrust_vector=thrust_vector
-                                                       #self.SPEED_LIMIT * np.abs(target_v[3]) * v_unit_vector # target the desired velocity vector
+                                                    thrust_vector=action[k,0:3], 
+                                                    target_vel = self.SPEED_LIMIT * np.abs(speed) * v_unit_vector,
+                                                    use_MPC=action[k,3]
                                                     )
             rpm[k,:] = temp
         return rpm

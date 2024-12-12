@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from environments.custom_aviaries.static_factory_aviary import StaticFactory
+from PDM_group15.environments.custom_aviaries.MPC_static_factory_aviary import StaticFactory
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.utils.Logger import Logger
 

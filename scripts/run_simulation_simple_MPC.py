@@ -3,7 +3,6 @@ import time
 import pybullet as p
 import sys
 import os
-
 # Add the parent directory of 'environments' to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from environments.custom_aviaries.static_factory_aviary import StaticFactory
@@ -11,80 +10,7 @@ from planners.rrt_star_planner import RRTStarPlanner
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.utils.Logger import Logger
 from bvh.bvh import BVHNode, build_bvh
-
-def quintic_trajectory(start, end, T, dt=0.01):
-    """
-    Generates a quintic trajectory between two points in 3D space.
-
-    Parameters:
-        start (dict): A dictionary with keys `position`, `velocity`, and `acceleration`, each containing
-                      a list or numpy array of size 3 (x, y, z components).
-        end (dict): A dictionary with the same keys as `start`.
-        T (float): The total time for the trajectory.
-        dt (float): Time step for the trajectory.
-
-    Returns:
-        tuple: A tuple containing three numpy arrays:
-               - An array of shape (N, 3), where N is the number of time steps, containing
-                 the trajectory points for x, y, and z.
-               - An array of shape (N, 3), containing the velocity trajectory for x, y, and z.
-               - An array of shape (N, 3), containing the acceleration trajectory for x, y, and z.
-    """
-    def compute_coefficients(p0, v0, a0, pT, vT, aT, T):
-        # Solve for the coefficients of the quintic polynomial
-        A = np.array([
-            [1, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0],
-            [0, 0, 2, 0, 0, 0],
-            [1, T, T**2, T**3, T**4, T**5],
-            [0, 1, 2*T, 3*T**2, 4*T**3, 5*T**4],
-            [0, 0, 2, 6*T, 12*T**2, 20*T**3]
-        ])
-        
-        b = np.array([p0, v0, a0, pT, vT, aT])
-        
-        return np.linalg.solve(A, b)
-
-    # Preallocate trajectory
-    timesteps = np.arange(0, T + dt, dt)
-    trajectory = np.zeros((len(timesteps), 3))
-    velocity = np.zeros((len(timesteps), 3))
-    acceleration = np.zeros((len(timesteps), 3))
-
-    for i, coord in enumerate(['x', 'y', 'z']):
-        p0, v0, a0 = start['position'][i], start['velocity'][i], start['acceleration'][i]
-        pT, vT, aT = end['position'][i], end['velocity'][i], end['acceleration'][i]
-
-        # Get the coefficients for the current coordinate
-        coeffs = compute_coefficients(p0, v0, a0, pT, vT, aT, T)
-
-        # Evaluate the polynomial, its derivative, and second derivative at each time step
-        trajectory[:, i] = (
-            coeffs[0] +
-            coeffs[1] * timesteps +
-            coeffs[2] * timesteps**2 +
-            coeffs[3] * timesteps**3 +
-            coeffs[4] * timesteps**4 +
-            coeffs[5] * timesteps**5
-        )
-
-        velocity[:, i] = (
-            coeffs[1] +
-            2 * coeffs[2] * timesteps +
-            3 * coeffs[3] * timesteps**2 +
-            4 * coeffs[4] * timesteps**3 +
-            5 * coeffs[5] * timesteps**4
-        )
-
-        acceleration[:, i] = (
-            2 * coeffs[2] +
-            6 * coeffs[3] * timesteps +
-            12 * coeffs[4] * timesteps**2 +
-            20 * coeffs[5] * timesteps**3
-        )
-
-    return trajectory, velocity, acceleration
-
+from control.MPCController import Simple_MPC
 
 def main():
     duration_sec = 50  
@@ -141,6 +67,8 @@ def main():
     goal_z = np.random.uniform(0.5, 2.5)
     goal_pos = np.array([goal_x, goal_y, goal_z])
 
+    
+
     goal_radius = 0.1
     goal_color = [0.0, 1.0, 0.0, 1.0]
     goal_visual = p.createVisualShape(
@@ -166,9 +94,9 @@ def main():
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
+        max_iter=1000,
         bvh=bvh,
         use_bvh=use_bvh,
-        max_iter=5000,
         step_size=0.2,
         goal_sample_rate=0.01,
         search_radius=0.5,
@@ -190,55 +118,76 @@ def main():
             physicsClientId=env.CLIENT
         )
 
+
+
     if path is None:
         print("Failed to find a path!")
         env.close()
         return
-    
 
     # Prepare for simulation
-    #waypoints = np.array(path)
-    #waypoints = np.array([[1.0,1.0,0.5],[1.5,1.5,0.5]])
-    #waypoint_idx = 0
+    waypoints = np.array(path)
+    waypoint_idx = 0
     target_speed = 1.0  
     action = np.zeros((1, 4))
-    start_point = {
-    'position': start_pos,
-    'velocity': [0, 0, 0],
-    'acceleration': [0, 0, 0]
-    }
-    end_point = {
-        'position': [5.0, 5.0, 1.0],
-        'velocity': [0, 0, 0],
-        'acceleration': [0, 0, 0]
-    }
 
-    trajectory, velocity, acceleration = quintic_trajectory(start_point, end_point, 0.5)
-    trajectory_idx = 0
+    Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
+    R = np.diag([0.1, 0.1,0.05])  # Input weights
+    MPC = Simple_MPC(Q=Q, R=R)
+
     # Run the simulation
     for i in range(num_steps):
         start_time = time.time()
 
         current_pos = obs[0][0:3]
-        if trajectory_idx < len(trajectory):
-            action = np.zeros(9)
-            action[0:3] = trajectory[trajectory_idx]  # [x, y, z]
-            action[3:6] = velocity[trajectory_idx]  # [dx, dy, dz]
-            action[6:9] = acceleration[trajectory_idx]  # [ddx, ddy, ddz]
-
-            pos_error = action[0:3]  - current_pos
+        current_vel = obs[0][3:6]
+        if waypoint_idx < len(waypoints):
+            target_pos = waypoints[waypoint_idx]
+            pos_error = target_pos - current_pos
             distance = np.linalg.norm(pos_error)
-            print(f"Distance: {distance}")
+
+            # Move to the next waypoint if close enough
             if distance < 0.2:
-                trajectory_idx += 1
-                print(f"Waypoint {trajectory_idx}/{len(trajectory)}")
+                waypoint_idx += 1
+                continue
+            
+            current_state = np.hstack([current_pos, current_vel])
+            des_state = np.hstack([target_pos, np.zeros(3)])
+            u,predicted_states = MPC.compute_mpc_control(
+                x0=current_state,
+                x_ref=des_state,
+                N=3
+            )
+            
+            
+            print("MPC Output",u)
+            action[0, :] = np.hstack((u, [target_speed]))
             
         else:
+            #hover at last waypoint
+            action[0, :] = np.array([0.0, 0.0, 0.0, 0.0])
 
-            action[0:3] = trajectory[-1]  # [x, y, z]
-            action[3:6] = np.array([0.0,0.0,0.0])  # [dx, dy, dz]
-            action[6:9] = np.array([0.0,0.0,0.0])  # [ddx, ddy, ddz]
 
+        # visualize the MPC predictions (scaled!)
+        scaling_factor = 0.5  
+
+        for j in range(predicted_states.shape[1] - 1):
+            start_point = predicted_states[:3, j]
+            next_point = predicted_states[:3, j + 1]
+
+            # Compute the direction vector and scale it
+            direction = next_point - start_point
+            direction_normalized = direction / np.linalg.norm(direction)  # Normalize the direction vector
+            scaled_point = start_point + direction_normalized * scaling_factor  # Scale the line
+
+            # Draw the scaled line
+            p.addUserDebugLine(
+                lineFromXYZ=start_point,
+                lineToXYZ=scaled_point,
+                lineColorRGB=[0, 1, 0],  # Green color for the prediction
+                lifeTime=env.CTRL_TIMESTEP,  # Keep the line until the next update
+                physicsClientId=env.CLIENT
+            )
 
         obs, reward, terminated, truncated, info = env.step(action)
 
@@ -247,11 +196,11 @@ def main():
             drone=0,
             timestamp=i * env.CTRL_TIMESTEP,
             state=obs[0],
-            control=np.hstack([action[0:3] , np.zeros(9)])
+            control=np.hstack([target_pos, np.zeros(9)])
         )
 
 
-        #print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
 
         if terminated or truncated:
@@ -266,6 +215,8 @@ def main():
     env.close()
 
     planner.draw_tree()
+    logger.save()
+    logger.save_as_csv("simulation_rrt_star")
     print(f"Elapsed planner time: {elapsed_time:.4f} seconds")
     #logger.save()
     #logger.save_as_csv("simulation_rrt_star")

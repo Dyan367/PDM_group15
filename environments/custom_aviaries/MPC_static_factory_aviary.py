@@ -7,11 +7,11 @@ from gym_pybullet_drones.envs.BaseAviary import BaseAviary
 import sys
 sys.path.append('PDM_group15/environments/custom_aviaries/MPCAviary.py')
 
-from gym_pybullet_drones.envs.VelocityAviary import VelocityAviary
+from environments.custom_aviaries.MPCAviary import MPCAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 
-class StaticFactory(VelocityAviary):
+class StaticFactoryMPC(MPCAviary):
 
 
     def __init__(self, dt = 0.01,obstacle_config={}, seed=42, **kwargs):

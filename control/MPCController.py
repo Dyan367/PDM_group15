@@ -3,7 +3,6 @@ import cvxpy as cp
 
 def discretize_tustin(A,B,dt):
         """Discretize the state-space matrices using the Tustin method."""
-        dt = 1/48
         n = A.shape[0]
         I = np.eye(n)
         Ad = np.linalg.inv(I - 0.5 * A * dt) @ (I + 0.5 * A * dt)
@@ -14,7 +13,7 @@ class Simple_MPC():
     def __init__(self,Q, R):
         ## Simple state space
         ## x = [x,y,z,vx,vy,vz]
-        ## u = [ax,ay,az]
+        ## u = [vx,vy,vz]
 
         self.A = np.array([
             [0, 0, 0, 1, 0, 0],
@@ -35,7 +34,7 @@ class Simple_MPC():
         ])
         self.Q = Q
         self.R = R
-        self.Ad, self.Bd = discretize_tustin(self.A, self.B, 0.01)
+        self.Ad, self.Bd = discretize_tustin(self.A, self.B, 1/48)
 
     def compute_mpc_control(self, x0, x_ref, N):
         """
@@ -47,7 +46,7 @@ class Simple_MPC():
             N: Prediction horizon.
 
         Returns:
-            u_opt: Optimal control input [ax, ay, az] for the first timestep.
+            u_opt: Optimal control input [vx,vy,vz] for the first timestep.
         """
 
         # Dimensions
@@ -72,12 +71,12 @@ class Simple_MPC():
             # Dynamics constraint
             constraints.append(x[:, k + 1] == self.Ad @ x[:, k] + self.Bd @ u[:, k])
 
-            constraints.append(u[:, k] >= -0.5)  # Minimum acceleration
-            constraints.append(u[:, k] <= 0.5)  # Maximum acceleration 
-            constraints.append(x[3:, k] >= [-1.0, -1.0, -1.0])  # Minimum velocity 
-            constraints.append(x[3:, k] <= [1.0, 1.0, 1.0])   # Maximum velocity 
-            constraints.append(x[:3, k] >= [-5.0, -5.0, 0.0])  # Minimum position 
-            constraints.append(x[:3, k] <= [5.0,5.0,3.0])   # Maximum position 
+            # constraints.append(u[:, k] >= -0.5)  # Minimum acceleration
+            # constraints.append(u[:, k] <= 0.5)  # Maximum acceleration 
+            # constraints.append(x[3:, k] >= [-1.0, -1.0, -1.0])  # Minimum velocity 
+            # constraints.append(x[3:, k] <= [1.0, 1.0, 1.0])   # Maximum velocity 
+            # constraints.append(x[:3, k] >= [-5.0, -5.0, 0.0])  # Minimum position 
+            # constraints.append(x[:3, k] <= [5.0,5.0,3.0])   # Maximum position 
 
         # Terminal cost
         cost += cp.quad_form(x[:, N] - x_ref, self.Q)
@@ -91,7 +90,6 @@ class Simple_MPC():
 
         # Return the first control input
         u_opt = u[:, 0].value
-        return u_opt
-    
-
+        predicted_states = x.value
+        return u_opt, predicted_states
 

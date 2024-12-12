@@ -5,6 +5,7 @@ from scipy.spatial.transform import Rotation
 
 from gym_pybullet_drones.control.BaseControl import BaseControl
 from gym_pybullet_drones.utils.enums import DroneModel
+from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 
 from scipy.spatial.transform import Rotation
 import cvxpy as cp
@@ -121,9 +122,10 @@ class MPCControl(BaseControl):
                        cur_ang_vel,
                        target_pos,
                        target_rpy,
-                       
                        thrust_vector,
+                       target_vel,
                        target_rpy_rates=np.zeros(3),
+                       use_MPC=True
                        ):
         """Computes the PID control action (as RPMs) for a single drone.
 
@@ -172,24 +174,36 @@ class MPCControl(BaseControl):
         #                                                                         dt=self.dt
         #                                                                         )
         
-        
-        thrust, computed_target_rpy = self._MPCPositionControl(control_timestep,
-                                                                         cur_pos,
-                                                                         cur_quat,
-                                                                         cur_vel,
-                                                                         
-                                                                         target_rpy,
-                                                                         
-                                                                         thrust_vector
-                                                                         )
-        rpm = self._MPCAttitudeControl(control_timestep,
-                                          thrust,
-                                          cur_quat,
-                                          computed_target_rpy,
-                                          target_rpy_rates
-                                          )
-        cur_rpy = p.getEulerFromQuaternion(cur_quat)
-        return rpm, computed_target_rpy[2] - cur_rpy[2]
+        pid_controller = DSLPIDControl(drone_model=DroneModel.CF2X)
+        if use_MPC:
+            thrust, computed_target_rpy = self._MPCPositionControl(control_timestep,
+                                                                            cur_pos,
+                                                                            cur_quat,
+                                                                            cur_vel,
+                                                                            
+                                                                            target_rpy,
+                                                                            
+                                                                            thrust_vector
+                                                                            )
+            rpm = self._MPCAttitudeControl(control_timestep,
+                                            thrust,
+                                            cur_quat,
+                                            computed_target_rpy,
+                                            target_rpy_rates
+                                            )
+            cur_rpy = p.getEulerFromQuaternion(cur_quat)
+            return rpm, computed_target_rpy[2] - cur_rpy[2]
+        else:
+            rpm,_,_ =pid_controller.computeControl(control_timestep=control_timestep,
+                                                    cur_pos=cur_pos,
+                                                    cur_quat=cur_quat,
+                                                    cur_vel=cur_vel,
+                                                    cur_ang_vel=cur_ang_vel,
+                                                    target_pos=target_pos, # same as the current position
+                                                    target_rpy=target_rpy, # keep current yaw
+                                                    target_vel=target_vel # target the desired velocity vector
+                                                    )
+            return rpm, 0.0
     
     ################################################################################
 
@@ -236,7 +250,7 @@ class MPCControl(BaseControl):
         
         
         #### MPC target thrust #####################################
-        target_thrust = thrust_vector
+        target_thrust = thrust_vector[0:3]
         print("thrust:",target_thrust)
         scalar_thrust = max(0., np.dot(target_thrust, cur_rotation[:,2]))
 
