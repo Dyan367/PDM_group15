@@ -92,4 +92,94 @@ class Simple_MPC():
         u_opt = u[:, 0].value
         predicted_states = x.value
         return u_opt, predicted_states
+    
+class Linear_MPC():
+    def __init__(self,Q, R):
+        ## Simple state space
+        ## x = [x,y,z,vx,vy,vz]
+        ## u = [vx,vy,vz]
+
+        # State-space matrices
+        g = 9.81  # Gravity (m/s^2)
+        m = 0.027   # Mass of the quadrotor (kg)
+        I_x = 14e-5  # Moment of inertia about x-axis (kg·m^2)
+        I_y = 14e-5  # Moment of inertia about y-axis (kg·m^2)
+        I_z = 22e-5  # Moment of inertia about z-axis (kg·m^2)
+        self.A = np.block([
+            [np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 3))],
+            [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3)],
+            [np.zeros((3, 3)), np.array([[0, g, 0], [-g, 0, 0], [0, 0, 0]]), np.zeros((3, 3)), np.zeros((3, 3))],
+            [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3))]
+        ])
+
+        self.B = np.block([
+            [np.zeros((3, 4))],
+            [np.zeros((3, 4))],
+            [np.array([[0, 0, 0, 0],
+                    [0, 0, 0, 0],
+                    [1 / m, 0, 0, 0]])],
+            [np.array([[0, 1 / I_x, 0, 0],
+                    [0, 0, 1 / I_y, 0],
+                    [0, 0, 0, 1 / I_z]])]
+        ])
+        self.Q = Q
+        self.R = R
+        self.Ad, self.Bd = discretize_tustin(self.A, self.B, 1/48)
+
+    def compute_mpc_control(self, x0, x_ref, N):
+        """
+        Compute the desired accelerations using MPC.
+
+        Args:
+            x0: Initial state vector [x, y, z, vx, vy, vz].
+            x_ref: Reference state vector [x_ref, y_ref, z_ref, vx_ref, vy_ref, vz_ref].
+            N: Prediction horizon.
+
+        Returns:
+            u_opt: Optimal control input [vx,vy,vz] for the first timestep.
+        """
+
+        # Dimensions
+        n_states = self.Ad.shape[0]
+        n_inputs = self.Bd.shape[1]
+
+        # Optimization variables
+        x = cp.Variable((n_states, N + 1))
+        u = cp.Variable((n_inputs, N))
+
+        # Objective function
+        cost = 0
+        constraints = []
+
+        # Initial state constraint
+        constraints.append(x[:, 0] == x0)
+
+        for k in range(N):
+            # Cost function (tracking + control effort)
+            cost += cp.quad_form(x[:, k] - x_ref, self.Q) + cp.quad_form(u[:, k], self.R)
+
+            # Dynamics constraint
+            constraints.append(x[:, k + 1] == self.Ad @ x[:, k] + self.Bd @ u[:, k])
+
+            # constraints.append(u[:, k] >= -0.5)  # Minimum acceleration
+            # constraints.append(u[:, k] <= 0.5)  # Maximum acceleration 
+            # constraints.append(x[3:, k] >= [-1.0, -1.0, -1.0])  # Minimum velocity 
+            # constraints.append(x[3:, k] <= [1.0, 1.0, 1.0])   # Maximum velocity 
+            # constraints.append(x[:3, k] >= [-5.0, -5.0, 0.0])  # Minimum position 
+            # constraints.append(x[:3, k] <= [5.0,5.0,3.0])   # Maximum position 
+
+        # Terminal cost
+        cost += cp.quad_form(x[:, N] - x_ref, self.Q)
+
+        # Solve the optimization problem
+        problem = cp.Problem(cp.Minimize(cost), constraints)
+        problem.solve()
+
+        if problem.status != cp.OPTIMAL:
+            raise ValueError("MPC optimization failed.")
+
+        # Return the first control input
+        u_opt = u[:, 0].value
+        predicted_states = x.value
+        return u_opt, predicted_states
 

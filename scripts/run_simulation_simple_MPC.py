@@ -10,7 +10,8 @@ from planners.rrt_star_planner import RRTStarPlanner
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.utils.Logger import Logger
 from bvh.bvh import BVHNode, build_bvh
-from control.MPCController import Simple_MPC
+from control.MPCController import Simple_MPC,Linear_MPC
+from scipy.integrate import solve_ivp
 
 def main():
     duration_sec = 50  
@@ -18,6 +19,32 @@ def main():
     control_freq_hz = 48
     num_steps = int(duration_sec * control_freq_hz)
     gui = True
+
+        # Quadrotor Parameters
+    g = 9.81  # Gravity (m/s^2)
+    m = 0.027   # Mass of the quadrotor (kg)
+    I_x = 14e-5  # Moment of inertia about x-axis (kg·m^2)
+    I_y = 14e-5  # Moment of inertia about y-axis (kg·m^2)
+    I_z = 22e-5  # Moment of inertia about z-axis (kg·m^2)
+
+    # State-space matrices
+    A = np.block([
+        [np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 3))],
+        [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3)],
+        [np.zeros((3, 3)), np.array([[0, g, 0], [-g, 0, 0], [0, 0, 0]]), np.zeros((3, 3)), np.zeros((3, 3))],
+        [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3))]
+    ])
+
+    B = np.block([
+        [np.zeros((3, 4))],
+        [np.zeros((3, 4))],
+        [np.array([[0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [1 / m, 0, 0, 0]])],
+        [np.array([[0, 1 / I_x, 0, 0],
+                [0, 0, 1 / I_y, 0],
+                [0, 0, 0, 1 / I_z]])]
+    ])
 
     env = StaticFactory(
         drone_model=DroneModel.CF2X,
@@ -86,6 +113,20 @@ def main():
 
     start_pos = np.copy(env.pos[0])
 
+    drone_visual = p.createVisualShape(
+        shapeType=p.GEOM_SPHERE,
+        radius=0.05,
+        rgbaColor=[0.0,0.0,1.0,1.0],
+        physicsClientId=env.CLIENT
+        )
+    
+    drone_body = p.createMultiBody(
+        baseMass=0,
+        baseVisualShapeIndex=drone_visual,
+        basePosition=start_pos,
+        physicsClientId=env.CLIENT
+    )
+
     # Initialize the RRT* planner
     planner = RRTStarPlanner(
         start=start_pos,
@@ -137,6 +178,14 @@ def main():
     R = np.diag([0.1, 0.1,0.05])  # Input weights
     MPC = Simple_MPC(Q=Q, R=R)
 
+    Ql = np.diag([100, 100, 100, 1, 1, 1,1, 1, 1,1, 1, 1])  # State weights
+    Rl = np.diag([0.1, 0.1,0.1,0.1])  # Input weights
+
+    LinearMPC = Linear_MPC(Q=Ql, R=Rl)
+
+    state = np.zeros(12)
+    state[0:3] = start_pos
+
     # Run the simulation
     for i in range(num_steps):
         start_time = time.time()
@@ -144,10 +193,14 @@ def main():
         current_pos = obs[0][0:3]
         current_vel = obs[0][3:6]
 
+        
         if waypoint_idx < len(waypoints):
             target_pos = waypoints[waypoint_idx]
             pos_error = target_pos - current_pos
+            
             distance = np.linalg.norm(pos_error)
+
+            distance = np.linalg.norm(target_pos - state[0:3])
 
             # Move to the next waypoint if close enough
             if distance < 0.2:
@@ -162,8 +215,12 @@ def main():
                 x_ref=des_state,
                 N=3 #Horizon
             )
+
+            des_state = np.hstack([target_pos, np.zeros(9)])
+            u_opt_linear,_ =LinearMPC.compute_mpc_control(x0=state, x_ref=des_state, N=3)
+            print("Linear MPC Output [T, taux, tauy, tauz]",u_opt_linear)
             
-            print("MPC Output [vx,vy,vz]",u_opt)
+            #print("MPC Output [vx,vy,vz]",u_opt)
             action[0, :] = np.hstack((u_opt, [target_speed]))
             
         else:
@@ -191,8 +248,15 @@ def main():
                 lifeTime=env.CTRL_TIMESTEP,  # Keep the line until the next update
                 physicsClientId=env.CLIENT
             )
-
+        dt = env.CTRL_TIMESTEP
+        t = i*env.CTRL_TIMESTEP
         obs, reward, terminated, truncated, info = env.step(action)
+        sol = solve_ivp(lambda t, x: A @ x + B @ u_opt_linear, [t * dt, (t + 1) * dt], state, t_eval=[(t + 1) * dt])
+        state = sol.y.flatten()
+
+        p.resetBasePositionAndOrientation(drone_body, state[0:3], [0, 0, 0, 1], physicsClientId=env.CLIENT)
+
+        
 
 
         logger.log(
@@ -203,7 +267,7 @@ def main():
         )
 
 
-        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        print(f"Step {i}, Position: {state[0:3]}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
 
         if terminated or truncated:
