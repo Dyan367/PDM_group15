@@ -76,7 +76,7 @@ def main():
     goal_y = np.random.uniform(-arena_size / 2, arena_size / 2)
     goal_z = np.random.uniform(0.5, 2.5)
     goal_pos = np.array([goal_x, goal_y, goal_z])
-    goal_pos = np.array([2.0, 0.0, 1.0])
+    #goal_pos = np.array([2.0, 0.0, 1.0])
 
     
 
@@ -158,10 +158,11 @@ def main():
 # I am not 100% sure that this function creates a trajectory that has 0.0 yaw angle so this could be looked into
     reference_states = generate_reference_states(
     waypoints=waypoints,
-    total_time=10.0,  
+    total_time=15.0,  
     vehicle_mass=0.027000,
     drag_params=drag_params,
-    yaw=0.0  # Fixed yaw angle
+    yaw= None,
+    yaw_rate=None  # Fixed yaw angle
 )
 
     # Extract results
@@ -169,53 +170,54 @@ def main():
     velocities = reference_states["velocities"]
     attitudes = reference_states["attitudes"]
     time_samples = reference_states["time_samples"]
+    angular_velocities =reference_states["angular_velocities"]
 
-    # Trajectory generation does not provide angular velocities and accelerations, so we need to compute them that is done here
-    desired_angular_velocities = []
-    desired_angular_accelerations = []
+    # # Trajectory generation does not provide angular velocities and accelerations, so we need to compute them that is done here
+    # desired_angular_velocities = []
+    # #desired_angular_accelerations = []
 
-    prev_quaternion = attitudes[0]  # Initialize with the first quaternion
-    prev_angular_velocity = np.zeros(3)  # Initialize with zero angular velocity
+    # prev_quaternion = attitudes[0]  # Initialize with the first quaternion
+    # prev_angular_velocity = np.zeros(3)  # Initialize with zero angular velocity
 
-    # Loop over desired trajectory samples
-    for i in range(len(positions)):
-        # Extract desired position, velocity, and attitude (quaternion)
-        desired_pos = positions[i]
-        desired_vel = velocities[i]
-        desired_quaternion = attitudes[i]  # Quaternion: [x, y, z, w]
+    # # Loop over desired trajectory samples
+    # for i in range(len(positions)):
+    #     # Extract desired position, velocity, and attitude (quaternion)
+    #     desired_pos = positions[i]
+    #     desired_vel = velocities[i]
+    #     desired_quaternion = attitudes[i]  # Quaternion: [x, y, z, w]
 
-        if i > 0:  # Skip the first step
-            # Compute delta time
-            dt = time_samples[i] - time_samples[i - 1]
+    #     if i > 0:  # Skip the first step
+    #         # Compute delta time
+    #         dt = time_samples[i] - time_samples[i - 1]
 
-            # Convert quaternions to rotation objects
-            current_rot = Rotation.from_quat(desired_quaternion)
-            previous_rot = Rotation.from_quat(prev_quaternion)
+    #         # Convert quaternions to rotation objects
+    #         current_rot = Rotation.from_quat(desired_quaternion)
+    #         previous_rot = Rotation.from_quat(prev_quaternion)
 
-            # Compute the relative rotation
-            delta_rot = current_rot * previous_rot.inv()
-            delta_angle = delta_rot.as_rotvec()  # Convert to angle-axis representation
+    #         # Compute the relative rotation
+    #         delta_rot = current_rot * previous_rot.inv()
+    #         delta_angle = delta_rot.as_rotvec()  # Convert to angle-axis representation
 
-            # Angular velocity = delta angle / delta time
-            angular_velocity = delta_angle / dt
+    #         # Angular velocity = delta angle / delta time
+    #         angular_velocity = angular_velocity = np.zeros(3) #delta_angle / dt
 
-            # Compute angular acceleration (alpha = d(angular_velocity)/dt)
-            angular_acceleration = (angular_velocity - prev_angular_velocity) / dt
-        else:
-            angular_velocity = np.zeros(3)  # Zero angular velocity for the first step
-            angular_acceleration = np.zeros(3)  # Zero angular acceleration for the first step
+    #         # Compute angular acceleration (alpha = d(angular_velocity)/dt)
+    #         #angular_acceleration = (angular_velocity - prev_angular_velocity) / dt
+    #     else:
+    #         angular_velocity = np.zeros(3)  # Zero angular velocity for the first step
+    #         #angular_acceleration = np.zeros(3)  # Zero angular acceleration for the first step
 
-        # Store the angular velocity and angular acceleration
-        desired_angular_velocities.append(angular_velocity)
-        desired_angular_accelerations.append(angular_acceleration)
+    #     # Store the angular velocity and angular acceleration
+    #     desired_angular_velocities.append(angular_velocity)
+    #     #desired_angular_accelerations.append(angular_acceleration)
 
-        # Update the previous quaternion and angular velocity
-        prev_quaternion = desired_quaternion
-        prev_angular_velocity = angular_velocity
+    #     # Update the previous quaternion and angular velocity
+    #     prev_quaternion = desired_quaternion
+    #     prev_angular_velocity = angular_velocity
 
-    # Convert to NumPy arrays
-    desired_angular_velocities = np.array(desired_angular_velocities)
-    desired_angular_accelerations = np.array(desired_angular_accelerations)
+    # # Convert to NumPy arrays
+    # desired_angular_velocities = np.array(desired_angular_velocities)
+    
 ##############################################################################################################################################################################
 # VISUALIZE THE TRAJECTORY
 ##############################################################################################################################################################################
@@ -233,15 +235,15 @@ def main():
 ##############################################################################################################################################################################
     #MPC WEIGHTS FOR RPM CALCULATION
     Q_rpm = np.diag([
-        1, 1, 1,       # Position weights
-        10, 10, 10,    # Velocity weights
-        100, 100, 100, # Attitude weights
-        1000, 1000, 1000 # Angular velocity weights (scaled down)
+        100, 100, 100,       # Position weights
+        1000, 1000, 1000,    # Velocity weights
+        1000, 1000, 1000, # Attitude weights
+        1, 1, 1 # Angular velocity weights (scaled down)
     ])
 
-    R_rpm = np.diag([0.1, 0.01, 0.01, 0.01])  # Higher priority on smooth inputs
+    R_rpm = np.diag([0.01, 0.01, 0.01, 0.01])  # Higher priority on smooth inputs
 
-    rpm_mpc = rpm_calc(Q=Q_rpm, R=R_rpm, N=6)
+    rpm_mpc = rpm_calc(Q=Q_rpm, R=R_rpm, N=5)
 
     # ## HERE TUNE MPC PARAMETERS and initialie MPC class
     # Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
@@ -286,7 +288,7 @@ def main():
             desired_pos = positions[time_index]
             desired_vel = velocities[time_index]
             desired_attitude = attitudes[time_index]
-            angular_velocity = desired_angular_velocities[time_index]  # Precomputed angular velocity
+            angular_velocity = angular_velocities[time_index]  # Precomputed angular velocity
 
             # Convert quaternion to roll, pitch, yaw
             roll, pitch, yaw = p.getEulerFromQuaternion(desired_attitude)

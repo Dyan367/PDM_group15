@@ -3,7 +3,7 @@ import minsnap_trajectories as ms
 
 
 def generate_reference_states(
-    waypoints, total_time=10.0, vehicle_mass=1.0, yaw="velocity", degree=8, drag_params=None
+    waypoints, total_time=10.0, vehicle_mass=1.0, yaw="velocity", degree=8, drag_params=None, yaw_rate=None
 ):
     # Compute the total distance and normalize segment durations
     distances = np.linalg.norm(np.diff(waypoints, axis=0), axis=1)
@@ -28,7 +28,7 @@ def generate_reference_states(
     )
 
     # Generate time samples for trajectory evaluation
-    time_samples = np.linspace(0, total_time, 50)
+    time_samples = np.linspace(0, total_time, 100)
 
     # Compute the quadrotor trajectory
     quadrotor_trajectory = ms.compute_quadrotor_trajectory(
@@ -37,18 +37,21 @@ def generate_reference_states(
         vehicle_mass=vehicle_mass,
         yaw=yaw,
         drag_params=drag_params,
+        yaw_rate=yaw_rate
     )
 
     # Extract positions, velocities, and attitudes
     positions = quadrotor_trajectory.position
     velocities = quadrotor_trajectory.velocity
     attitudes = quadrotor_trajectory.attitude
+    angular_velocities = quadrotor_trajectory.body_rates
 
     return {
         "positions": positions,
         "velocities": velocities,
         "attitudes": attitudes,
         "time_samples": time_samples,
+        "angular_velocities": angular_velocities
     }
 
 
