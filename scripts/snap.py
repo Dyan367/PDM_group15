@@ -14,13 +14,14 @@ from control.MPCController import Simple_MPC
 
 ##
 # The class rpm_calc is used to calculate the RPMs of the motors using MPC
-from experimental.linearized_drone_mpc import rpm_calc
+from experimental.linearized_drone_mpc import rpm_calc, RPMCalcCasADi
 from experimental.trajectory_generation import generate_reference_states
 from scipy.spatial.transform import Rotation
 # The class minsnap_trajectories is used to generate the reference states for the drone using min snap trajectory generation
 import minsnap_trajectories as ms
 # The class hierarchical_control uses 2 MPCs to control the position and attitude of the drone by computing the thrust and torques then converting them to RPMs
 from experimental.hierarchical_control import hierarchical_control
+import casadi as ca
 
 def main():
     duration_sec = 50  
@@ -139,6 +140,7 @@ def main():
 
     # Prepare for simulation
     waypoints = np.array(path)
+    waypoints = np.array([waypoints[0], waypoints[-1]])
     waypoint_idx = 0
     target_speed = 1.0  
     action = np.zeros((1, 4))
@@ -235,15 +237,16 @@ def main():
 ##############################################################################################################################################################################
     #MPC WEIGHTS FOR RPM CALCULATION
     Q_rpm = np.diag([
-        100, 100, 100,       # Position weights
-        1000, 1000, 1000,    # Velocity weights
-        1000, 1000, 1000, # Attitude weights
+        50, 50, 1,       # Position weights
+        10, 10, 1,    # Velocity weights
+        1, 1, 1, # Attitude weights
         1, 1, 1 # Angular velocity weights (scaled down)
     ])
 
-    R_rpm = np.diag([0.01, 0.01, 0.01, 0.01])  # Higher priority on smooth inputs
+    R_rpm = np.diag([10, 0.01, 0.01, 0.01])  # Higher priority on smooth inputs
 
-    rpm_mpc = rpm_calc(Q=Q_rpm, R=R_rpm, N=5)
+    # Initialize the MPC controller with the desired state
+    rpm_mpc = RPMCalcCasADi(Q=Q_rpm, R=R_rpm, N=3, dt=0.01)
 
     # ## HERE TUNE MPC PARAMETERS and initialie MPC class
     # Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
@@ -281,8 +284,8 @@ def main():
             elapsed_time = i * env.CTRL_TIMESTEP  # Calculate time since the start of the simulation
 
             # Update desired position based on the time index (trajectory following)
-            if elapsed_time >= time_samples[time_index + 1]:
-                time_index += 1
+            # if elapsed_time >= time_samples[time_index + 1]:
+            time_index += 1
 
             # get the trajectory at the current time index
             desired_pos = positions[time_index]
@@ -344,18 +347,24 @@ def main():
             #rpms = hierarchical_controller.u2rpms(thrust, tau)
 
             # Print RPMs
-            print("\n--- Computed RPMs ---")
-            for i, rpm in enumerate(rpms, 1):
-                print(f"Motor {i} RPM               : {rpm:.1f}")
+            # print("\n--- Computed RPMs ---")
+            # for i, rpm in enumerate(rpms, 1):
+            #     print(f"Motor {i} RPM               : {rpm:.1f}")
+            rpms_array = rpms.full() if isinstance(rpms, ca.DM) else rpms
 
-            # MAKE SURE TO ADJUST DSLIPOSITIONCONTROL BY COMMENTING OUT COMPUTATIONS IN .computeControl() IN VELOCITYAVIARY.PY SUCH THAT IT RETURNS ACTION = RPMS
-            action[0, :] = rpms #np.hstack((u_opt, [target_speed]))
-            
-        else:
-            
-            rpms = np.zeros(4)
+            # Iterate over the array or list
+            for i, rpm in enumerate(rpms_array, 1):
+                print(f"Motor {i}: {rpm}")
 
-            action[0, :] = rpms
+            rpms_array = rpms_array.reshape(4,)
+
+            action[0, :] = rpms_array  # np.hstack((u_opt, [target_speed]))
+            
+        # else:
+            
+        #     rpms = np.zeros(4)
+
+        #     action[0, :] = rpms
 
 
         # visualize the MPC predictions (scaled!)
