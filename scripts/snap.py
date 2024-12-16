@@ -14,7 +14,7 @@ from control.MPCController import Simple_MPC
 
 ##
 # The class rpm_calc is used to calculate the RPMs of the motors using MPC
-from PDM_group15.experimental.linearized_drone_mpc import rpm_calc
+from experimental.linearized_drone_mpc import rpm_calc
 from experimental.trajectory_generation import generate_reference_states
 from scipy.spatial.transform import Rotation
 # The class minsnap_trajectories is used to generate the reference states for the drone using min snap trajectory generation
