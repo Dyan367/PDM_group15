@@ -134,7 +134,7 @@ def main():
 
     ## HERE TUNE MPC PARAMETERS and initialie MPC class
     Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
-    R = np.diag([0.1, 0.1,0.05])  # Input weights
+    R = np.diag([0.1, 0.1,0.1])  # Input weights
     MPC = Simple_MPC(Q=Q, R=R)
 
     # Run the simulation
