@@ -178,8 +178,8 @@ def main():
     R = np.diag([0.1, 0.1,0.05])  # Input weights
     MPC = Simple_MPC(Q=Q, R=R)
 
-    Ql = np.diag([100, 100, 100, 1, 1, 1,1, 1, 1,1, 1, 1])  # State weights
-    Rl = np.diag([0.1, 0.1,0.1,0.1])  # Input weights
+    Ql = np.diag([150, 50, 50, 10, 10, 10,1, 1, 1,1, 1, 1])  # State weights
+    Rl = np.diag([0.1, 5,5,0.1])  # Input weights
 
     LinearMPC = Linear_MPC(Q=Ql, R=Rl)
 
@@ -217,7 +217,7 @@ def main():
             )
 
             des_state = np.hstack([target_pos, np.zeros(9)])
-            u_opt_linear,_ =LinearMPC.compute_mpc_control(x0=state, x_ref=des_state, N=3)
+            u_opt_linear,_ =LinearMPC.compute_mpc_control(x0=state, x_ref=des_state, N=10)
             print("Linear MPC Output [T, taux, tauy, tauz]",u_opt_linear)
             
             #print("MPC Output [vx,vy,vz]",u_opt)
