@@ -338,8 +338,8 @@ def main():
             rpms, predicted_states, _, _ = rpm_mpc.solve_mpc(current_state, desired_state)
 
             # 2 MPC CONTROLLERS ONE FOR POSITION THE OTHER FOR ATTITUDE
-            thrust, tau, predicted_states = hierarchical_controller.compute_mpc(current_state, desired_state)
-            rpms = hierarchical_controller.u2rpms(thrust, tau)
+            #thrust, tau, predicted_states = hierarchical_controller.compute_mpc(current_state, desired_state)
+            #rpms = hierarchical_controller.u2rpms(thrust, tau)
 
             # Print RPMs
             print("\n--- Computed RPMs ---")

@@ -53,9 +53,7 @@ class hierarchical_control():
         self.Ad_position, self.Bd_position = discretize_zoh(self.A_position, self.B_position, 0.01)
         self.Ad_attitude, self.Bd_attitude = discretize_zoh(self.A_attitude, self.B_attitude, 0.01)
 
-        self.P_pos, self.K_pos = compute_terminal_set(self.Ad_position, self.Bd_position, self.Q_pos, self.R_pos)
-        self.P_attitude, self.K_attitude = compute_terminal_set(self.Ad_attitude, self.Bd_attitude, self.Q_attitude, self.R_attitude)
-
+        
     def compute_position_mpc(self, x0, x_des):
         """
         Position MPC: Computes thrust and desired angles based on desired position.
@@ -73,7 +71,7 @@ class hierarchical_control():
         cost = 0
         constraints = [x[:, 0] == x0]
 
-        x_des = np.hstack((x_des[:3], [0.0,0.0,0.0]))
+        
 
         for t in range(self.N):
             cost += cp.quad_form(x[:, t] - x_des, self.Q_pos)
@@ -96,11 +94,9 @@ class hierarchical_control():
         # ]
 
         # Terminal cost
-        cost += cp.quad_form(x[:, self.N] - x_des, self.P_pos)
+        cost += cp.quad_form(x[:, self.N] - x_des, self.Q_pos)
 
-        # Terminal constraint: Ensure terminal state lies in terminal set
-        constraints += [cp.quad_form(x[:, self.N], self.P_pos) <= 1.0]  # Example terminal set bound
-
+        
 
         # Solve the problem
         prob = cp.Problem(cp.Minimize(cost), constraints)
@@ -126,7 +122,7 @@ class hierarchical_control():
 
         cost = 0
         constraints = [x[:, 0] == x0]
-        attitude_des = np.hstack((attitude_des[:3], [0.0,0.0,0.0]))
+        
         for t in range(self.N):
             cost += cp.quad_form(x[:, t] - attitude_des, self.Q_attitude)
             cost += cp.quad_form(u[:, t], self.R_attitude)
@@ -142,10 +138,10 @@ class hierarchical_control():
             
 
         # Terminal cost
-        cost += cp.quad_form(x[:, self.N] - attitude_des, self.P_attitude)
+        cost += cp.quad_form(x[:, self.N] - attitude_des, self.Q_attitude)
 
         # Terminal constraint: Ensure terminal state lies in terminal set
-        constraints += [cp.quad_form(x[:, self.N], self.P_attitude) <= 1.0]  # Example terminal set bound
+        #constraints += [cp.quad_form(x[:, self.N], self.P_attitude) <= 1.0]  # Example terminal set bound
 
 
         # Solve the problem
@@ -220,31 +216,3 @@ def discretize_zoh(A, B, dt):
     
     return A_d, B_d
 
-from scipy.linalg import solve_discrete_are
-
-def compute_terminal_set(A_d, B_d, Q, R, state_constraints=None, input_constraints=None):
-    """
-    Compute the terminal set and feedback gain for an LQR controller.
-
-    Args:
-        A_d (np.ndarray): Discrete-time state matrix.
-        B_d (np.ndarray): Discrete-time input matrix.
-        Q (np.ndarray): State cost matrix.
-        R (np.ndarray): Input cost matrix.
-        state_constraints (dict): State constraints {H_x, h_x}.
-        input_constraints (dict): Input constraints {H_u, h_u}.
-
-    Returns:
-        P (np.ndarray): Terminal cost matrix.
-        K (np.ndarray): Terminal feedback gain.
-    """
-    # Solve the discrete algebraic Riccati equation
-    P = solve_discrete_are(A_d, B_d, Q, R)
-
-    # Compute the LQR gain
-    K = -np.linalg.inv(R + B_d.T @ P @ B_d) @ (B_d.T @ P @ A_d)
-
-    # Terminal set constraints (optional implementation with polytope tools)
-    # Example: Intersection of state and input constraints transformed by K
-
-    return P, K
