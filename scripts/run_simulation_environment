@@ -1,10 +1,9 @@
-# run_simulation_rrt_star.py
 import numpy as np
 import time
 import pybullet as p
 from planners.rrt_star_planner import RRTStarPlanner
 from gym_pybullet_drones.utils.Logger import Logger
-from environments.custom_environment import create_env 
+from environments.factory_environment import create_env 
 
 def main():
     env, num_steps = create_env(duration_sec=50, simulation_freq_hz=240, control_freq_hz=48, gui=True)
@@ -12,19 +11,7 @@ def main():
 
     logger = Logger(logging_freq_hz=env.CTRL_FREQ, num_drones=1)
 
-    start_pos = env.pos[0]
-    goal_pos = np.array([5.0, 5.0, 1.0])
-
-    obstacles = []
-    for obs_id in env.obstacle_ids:
-        pos, _ = p.getBasePositionAndOrientation(obs_id, physicsClientId=env.CLIENT)
-        size = p.getVisualShapeData(obs_id, physicsClientId=env.CLIENT)[0][3]
-        obstacles.append({'position': np.array(pos), 'size': np.array(size) * 2})
-
-    arena_size = env.obstacle_config['arena_size']
-    x_range = [-arena_size / 2, arena_size / 2]
-    y_range = [-arena_size / 2, arena_size / 2]
-    z_range = [0.5, 2.0]
+    start_pos, goal_pos, obstacles, (x_range, y_range, z_range) = env.initialize_planning()
 
     planner = RRTStarPlanner(
         start=start_pos,
@@ -33,10 +20,10 @@ def main():
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=1000,
-        step_size=0.5,
+        max_iter=10000,
+        step_size=0.2,
         goal_sample_rate=0.1,
-        search_radius=1.0
+        search_radius=0.5
     )
 
     path = planner.plan()
@@ -56,7 +43,7 @@ def main():
 
     waypoints = np.array(path)
     waypoint_idx = 0
-    target_speed = 1.0
+    target_speed = 3.0
     action = np.zeros((1, 4))
 
     for i in range(num_steps):
@@ -102,8 +89,8 @@ def main():
 
     planner.draw_tree()
 
-    logger.save()
-    logger.save_as_csv("simulation_rrt_star")
+    #logger.save()
+    #logger.save_as_csv("simulation_rrt_star")
 
 if __name__ == "__main__":
     main()
