@@ -1,0 +1,147 @@
+import numpy as np
+import time
+import pybullet as p
+from planners.rrt_star_planner import RRTStarPlanner
+from gym_pybullet_drones.utils.Logger import Logger
+from control.MPCController import Simple_MPC
+from environments.factory_environment import create_env
+
+
+def main():
+    env, num_steps = create_env(duration_sec=50, simulation_freq_hz=240, control_freq_hz=48, gui=True)
+    obs, info = env.reset()
+
+    logger = Logger(logging_freq_hz=env.CTRL_FREQ, num_drones=1)
+    start_pos, goal_pos, obstacles, (x_range, y_range, z_range) = env.initialize_planning()
+
+    bvh = env.build_bvh(obstacles)
+    use_bvh = True
+
+    # Initialize the RRT* planner
+    planner = RRTStarPlanner(
+        start=start_pos,
+        goal=goal_pos,
+        obstacles=obstacles,
+        x_range=x_range,
+        y_range=y_range,
+        z_range=z_range,
+        max_iter=1000,
+        step_size=0.2,
+        goal_sample_rate=0.01,
+        search_radius=0.5,
+        bvh=bvh,
+        use_bvh=use_bvh
+    )
+
+    # Plan the path
+    start_time = time.time()
+    path = planner.plan()
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Elapsed planner time: {elapsed_time:.4f} seconds")
+
+    if path is None:
+        print("Failed to find a path!")
+        env.close()
+        return
+
+    # Visualize the path
+    for i in range(len(path) - 1):
+        p.addUserDebugLine(
+            lineFromXYZ=path[i],
+            lineToXYZ=path[i + 1],
+            lineColorRGB=[1, 0, 0],
+            lifeTime=0,
+            physicsClientId=env.CLIENT
+        )
+
+    waypoints = np.array(path)
+    waypoint_idx = 0
+    target_speed = 1.0
+    action = np.zeros((1, 4))
+
+    # Initialize MPC controller with tuning parameters
+    Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
+    R = np.diag([0.1, 0.1, 0.05])       # Input weights
+    MPC = Simple_MPC(Q=Q, R=R)
+
+    # Run the simulation
+    for i in range(num_steps):
+        step_start_time = time.time()
+
+        current_pos = obs[0][0:3]
+        current_vel = obs[0][3:6]
+
+        if waypoint_idx < len(waypoints):
+            target_pos = waypoints[waypoint_idx]
+            pos_error = target_pos - current_pos
+            distance = np.linalg.norm(pos_error)
+
+            # Move to the next waypoint if close enough
+            if distance < 0.2:
+                waypoint_idx += 1
+                continue
+
+            # Current and desired states for MPC
+            current_state = np.hstack([current_pos, current_vel])
+            desired_state = np.hstack([target_pos, np.zeros(3)])
+
+            u_opt, predicted_states = MPC.compute_mpc_control(
+                x0=current_state,
+                x_ref=desired_state,
+                N=3  # Prediction horizon
+            )
+
+            print("MPC Output [vx, vy, vz]:", u_opt)
+            action[0, :] = np.hstack((u_opt, [target_speed]))
+
+            # Visualize the MPC predictions (scaled)
+            scaling_factor = 0.5
+            for j in range(predicted_states.shape[1] - 1):
+                start_point = predicted_states[:3, j]
+                next_point = predicted_states[:3, j + 1]
+
+                direction = next_point - start_point
+                direction_normalized = direction / np.linalg.norm(direction)
+                scaled_point = start_point + direction_normalized * scaling_factor
+
+                p.addUserDebugLine(
+                    lineFromXYZ=start_point,
+                    lineToXYZ=scaled_point,
+                    lineColorRGB=[0, 1, 0],
+                    lifeTime=env.CTRL_TIMESTEP,
+                    physicsClientId=env.CLIENT
+                )
+        else:
+            # Hover at the last waypoint
+            action[0, :] = np.array([0.0, 0.0, 0.0, 0.0])
+
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        logger.log(
+            drone=0,
+            timestamp=i * env.CTRL_TIMESTEP,
+            state=obs[0],
+            control=np.hstack([target_pos, np.zeros(9)])
+        )
+
+        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+
+        if terminated or truncated:
+            print("Simulation ended")
+            break
+
+        # Maintain control loop timing
+        sleep_time = (1.0 / env.CTRL_FREQ) - (time.time() - step_start_time)
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+
+    env.close()
+    planner.draw_tree()
+    #logger.save()
+    #logger.save_as_csv("simulation_rrt_star")
+    print(f"Elapsed planner time: {elapsed_time:.4f} seconds")
+
+
+if __name__ == "__main__":
+    main()
