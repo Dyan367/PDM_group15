@@ -48,6 +48,7 @@ class StaticFactory(VelocityAviary):
             [6, 5, shelve_size[2] / 2]
         ]
 
+        # Add shelves
         for pos in shelve_positions:
             pillar_id = create_box_shape(
                 size=[shelve_size[0], shelve_size[1], shelve_size[2]],
@@ -64,38 +65,55 @@ class StaticFactory(VelocityAviary):
 
             self.obstacle_ids.append(pillar_id)
 
-        conveyor_pos = [10, 0, conveyor_size[2] / 2]
-        conveyor_id = create_box_shape(
+        conveyor_pos1 = [10, 0, conveyor_size[2] / 2]
+        conveyor_id1 = create_box_shape(
             size=[conveyor_size[0], conveyor_size[1], conveyor_size[2]],
             color=[0.5, 0.5, 0.5, 1],  # Gray color
             client_id=self.CLIENT
         )
 
         p.resetBasePositionAndOrientation(
-            conveyor_id,
-            conveyor_pos,
+            conveyor_id1,
+            conveyor_pos1,
             [0, 0, 0, 1],
             physicsClientId=self.CLIENT
         )
 
-        self.obstacle_ids.append(conveyor_id)
+        self.obstacle_ids.append(conveyor_id1)
 
-        num_cylinders = 8  # Number of cylinders to add
+        conveyor_pos2 = [14, 0, conveyor_size[2] / 2]
+        conveyor_id2 = create_box_shape(
+            size=[conveyor_size[0], conveyor_size[1], conveyor_size[2]],
+            color=[0.5, 0.5, 0.5, 1],  # Gray color
+            client_id=self.CLIENT
+        )
+
+        p.resetBasePositionAndOrientation(
+            conveyor_id2,
+            conveyor_pos2,
+            [0, 0, 0, 1],
+            physicsClientId=self.CLIENT
+        )
+
+        self.obstacle_ids.append(conveyor_id2)
+
+        # Add cylinders on the first conveyor moving in the positive y direction
+        num_cylinders = 8
         cylinder_radius = 0.3
         cylinder_height = 3.5
         y_spacing = conveyor_size[1] * 2 / (num_cylinders - 1)
-        cylinder_bounds = [-np.inf, np.inf, -conveyor_size[1], conveyor_size[1], -np.inf, np.inf]
-        cylinder_reset_position = [conveyor_pos[0], conveyor_pos[1] - conveyor_size[1], conveyor_pos[2] + cylinder_height / 2]
-        cylinder_velocity = [0.0, 10.0, 0.0]  # Movement along the y-axis
+        cylinder_bounds1 = [-np.inf, np.inf, -conveyor_size[1], conveyor_size[1], -np.inf, np.inf]
+        cylinder_reset_position1 = [conveyor_pos1[0], conveyor_pos1[1] - conveyor_size[1], conveyor_pos1[2] + cylinder_height / 2]
+        cylinder_velocity1 = [0.0, 10.0, 0.0]
 
         for i in range(num_cylinders):
-            cylinder_position = [
-                conveyor_pos[0],
-                conveyor_pos[1] - conveyor_size[1] + i * y_spacing,
-                conveyor_pos[2] + cylinder_height / 2
+            cylinder_position1 = [
+                conveyor_pos1[0],
+                conveyor_pos1[1] - conveyor_size[1] + i * y_spacing,
+                conveyor_pos1[2] + cylinder_height / 2
             ]
 
-            cylinder_id = create_cylinder_shape(
+            cylinder_id1 = create_cylinder_shape(
                 radius=cylinder_radius,
                 height=cylinder_height,
                 color=[0, 0, 1, 1],  # Blue color
@@ -103,19 +121,51 @@ class StaticFactory(VelocityAviary):
             )
 
             p.resetBasePositionAndOrientation(
-                cylinder_id,
-                cylinder_position,
+                cylinder_id1,
+                cylinder_position1,
                 [0, 0, 0, 1],
                 physicsClientId=self.CLIENT
             )
 
             self.moving_bodies.append(
-                (cylinder_id, *cylinder_velocity, cylinder_bounds, cylinder_reset_position)
+                (cylinder_id1, *cylinder_velocity1, cylinder_bounds1, cylinder_reset_position1)
             )
 
-            self.obstacle_ids.append(cylinder_id)
+            self.obstacle_ids.append(cylinder_id1)
 
-        crane_size = [0.4, conveyor_size[1], 0.8]
+        # Add cylinders on the second conveyor moving in the negative y direction
+        cylinder_bounds2 = [-np.inf, np.inf, -conveyor_size[1], conveyor_size[1], -np.inf, np.inf]
+        cylinder_reset_position2 = [conveyor_pos2[0], conveyor_pos2[1] + conveyor_size[1], conveyor_pos2[2] + cylinder_height / 2]
+        cylinder_velocity2 = [0.0, -10.0, 0.0]
+
+        for i in range(num_cylinders):
+            cylinder_position2 = [
+                conveyor_pos2[0],
+                conveyor_pos2[1] + conveyor_size[1] - i * y_spacing,
+                conveyor_pos2[2] + cylinder_height / 2
+            ]
+
+            cylinder_id2 = create_cylinder_shape(
+                radius=cylinder_radius,
+                height=cylinder_height,
+                color=[0, 1, 0, 1],  # Green color
+                client_id=self.CLIENT
+            )
+
+            p.resetBasePositionAndOrientation(
+                cylinder_id2,
+                cylinder_position2,
+                [0, 0, 0, 1],
+                physicsClientId=self.CLIENT
+            )
+
+            self.moving_bodies.append(
+                (cylinder_id2, *cylinder_velocity2, cylinder_bounds2, cylinder_reset_position2)
+            )
+
+            self.obstacle_ids.append(cylinder_id2)
+
+        crane_size = [0.4, conveyor_size[1] * 2, 0.8]
         crane_position = [10, 0, 5.0]
 
         self.crane = create_box_shape(
@@ -131,8 +181,9 @@ class StaticFactory(VelocityAviary):
             physicsClientId=self.CLIENT
         )
 
-        self.crane_bounds = [9, 11, -1, 1, 2.5, 3.5]
+        self.crane_bounds = [conveyor_pos1[0] - 1, conveyor_pos2[0] + 1, -2, 2, 2.5, 3.5]
         self.crane_velocity_x = self.crane_velocity
+
 
     def step(self, action):
         obs, reward, terminated, truncated, info = super().step(action)
