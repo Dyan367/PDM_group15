@@ -5,7 +5,7 @@ from scipy.sparse import csc_matrix
 import casadi as ca
 
 class rpm_calc():
-    def __init__(self, Q, R, N, dt=1/48):
+    def __init__(self, Q, R, N, dt):
         """
         Initializes the MPC controller.
         
@@ -20,9 +20,9 @@ class rpm_calc():
         """
         self.g = 9.81  # Acceleration due to gravity (m/s^2)
         self.m = 0.027000   # Mass of the quadrotor (kg)
-        self.I_x = 1.4e-1  # Moment of inertia about x-axis (kg·m^2)
-        self.I_y = 1.4e-1  # Moment of inertia about y-axis (kg·m^2)
-        self.I_z = 2.17e-1
+        self.I_x = 1.4e-5  # Moment of inertia about x-axis (kg·m^2)
+        self.I_y = 1.4e-5  # Moment of inertia about y-axis (kg·m^2)
+        self.I_z = 2.17e-5
         self.l = 0.039700
         self.A = np.zeros((12, 12))
         self.A[0:3, 3:6] = np.eye(3)  # Position derivatives (velocity)
@@ -88,11 +88,35 @@ class rpm_calc():
 
         for k in range(self.N):
             # Dynamics constraint
-            constraints.append(x[:, k + 1] == self.Ad @ x[:, k] + self.Bd @ (u[:, k]+ np.array([self.m * self.g,0,0,0])))
+            constraints.append(x[:, k + 1] == self.Ad @ x[:, k] + self.Bd @ (u[:, k]))
             #input constraints
+            constraints.append(x[3, k] <= 1.0) 
+            constraints.append(x[3, k] >= -1.0)
+
+            constraints.append(x[4, k] <= 1.0) 
+            constraints.append(x[4, k] >= -1.0)
+
+            constraints.append(x[5, k] <= 1.0) 
+            constraints.append(x[5, k] >= -1.0)
+
+            constraints.append(x[6, k] <= 0.05) 
+            constraints.append(x[6, k] >= -0.05)
+
+            constraints.append(x[7, k] <= 0.05)
+            constraints.append(x[7, k] >= -0.05)
+
+            constraints.append(x[8, k] <= 0.05)
+            constraints.append(x[8, k] >= -0.05)
             
             constraints.append(u[0, k] >= 0)  # Thrust >= 0
-            constraints.append(u[0, k] >= 0)  # Thrust >= 0
+            constraints.append(u[1, k] <= 0.0000003)  
+            constraints.append(u[1, k] >= -0.0000003)
+
+            constraints.append(u[2, k] <= 0.0000003)
+            constraints.append(u[2, k] >= -0.0000003)  
+
+            constraints.append(u[3, k] <= 0.0000003)
+            constraints.append(u[3, k] >= -0.0000003)  
             
 
             # Accumulate cost
@@ -101,19 +125,35 @@ class rpm_calc():
 
         # Terminal cost
         cost += cp.quad_form(x[:, self.N] - desired_state, self.Q)
+        problem = cp.Problem(cp.Minimize(cost), constraints)
+
+        
 
         # Solve the optimization problem
-        problem = cp.Problem(cp.Minimize(cost), constraints)
-        problem.solve(solver=cp.OSQP,warm_start=True)
+        try:
+            problem.solve(solver=cp.OSQP, warm_start=True)
+            if problem.status not in [cp.OPTIMAL, cp.FEASIBLE]:
+                raise Exception("Solver failed to find a solution.")
+            optimal_u = u[:, 0].value
+            predicted_states = x.value
+        except Exception as e:
+            print("MPC Solver Error:", e)
+            print("Using fallback control input...")
+            # Use previous control input or zero thrust and torques as fallback
+            
+            optimal_u = np.zeros(nu)
+            predicted_states = None
+            thrust = optimal_u[0]
+            tau = optimal_u[1:4]
 
-        if problem.status != cp.OPTIMAL:
-            raise ValueError("MPC optimization did not converge.")
+        # if problem.status != cp.OPTIMAL:
+        #     raise ValueError("MPC optimization did not converge.")
 
         # Extract first control input
-        optimal_u = u[:, 0].value
         predicted_states = x.value
         thrust = optimal_u[0]
         tau = optimal_u[1:4]
+        optimal_u[0] += self.m * self.g
 
         print("Optimal tau: ", optimal_u)
         
@@ -122,18 +162,20 @@ class rpm_calc():
         #thrust += self.m * self.g
         # thrust = np.maximum(0, thrust)
         
-        thrust += self.m * self.g
+        # thrust += self.m * self.g
+        # if thrust < 0:
+        #     thrust = 0
+        # else:
+        #     thrust = (np.sqrt(thrust / (4*self.KF)) - self.pwm2rpm_const) / self.pwm2rpm_scale
         
-       
-        thrust = (np.sqrt(thrust / (4*self.KF)) - self.pwm2rpm_const) / self.pwm2rpm_scale
+        # pwm = thrust + np.dot(self.mixer_matrix,tau)
+        # print("Optimal pwm: ", pwm)
+        # pwm = np.clip(pwm, self.min_pwm, self.max_pwm)
         
-        pwm = thrust + np.dot(self.mixer_matrix,tau)
-        print("Optimal pwm: ", pwm)
-        pwm = np.clip(pwm, self.min_pwm, self.max_pwm)
+        # rpms = self.pwm2rpm_scale * pwm + self.pwm2rpm_const
+        # rpms = optimal_u
         
-        rpms = self.pwm2rpm_scale * pwm + self.pwm2rpm_const
-        
-        return rpms, predicted_states, thrust, tau
+        return optimal_u, predicted_states, thrust, tau
     
 
 def discretize_tustin(A, B, dt):
@@ -191,9 +233,9 @@ class RPMCalcCasADi:
         """
         self.g = 9.81  # Acceleration due to gravity (m/s^2)
         self.m = 0.027000  # Mass of the quadrotor (kg)
-        self.I_x = 1.4e-1  # Moment of inertia about x-axis (kg·m^2)
-        self.I_y = 1.4e-1  # Moment of inertia about y-axis (kg·m^2)
-        self.I_z = 2.17e-1
+        self.I_x = 1.4e-5  # Moment of inertia about x-axis (kg·m^2)
+        self.I_y = 1.4e-5  # Moment of inertia about y-axis (kg·m^2)
+        self.I_z = 2.17e-5
         self.l = 0.039700
         self.A = np.zeros((12, 12))
         self.A[0:3, 3:6] = np.eye(3)  # Position derivatives (velocity)
@@ -226,8 +268,8 @@ class RPMCalcCasADi:
         self.dt = dt
 
         self.Ad, self.Bd = self.discretize_zoh(self.A, self.B, self.dt)
-        self.Ad = csc_matrix(self.Ad)
-        self.Bd = csc_matrix(self.Bd)
+        # self.Ad = csc_matrix(self.Ad)
+        # self.Bd = csc_matrix(self.Bd)
 
     def discretize_zoh(self, A, B, dt):
         """
@@ -250,60 +292,82 @@ class RPMCalcCasADi:
         nx = self.Ad.shape[0]  # State dimension
         nu = self.Bd.shape[1]  # Input dimension
 
-        # Convert Ad and Bd to dense if they are sparse
-        Ad_dense = self.Ad.toarray() if isinstance(self.Ad, csc_matrix) else self.Ad
-        Bd_dense = self.Bd.toarray() if isinstance(self.Bd, csc_matrix) else self.Bd
-
         # CasADi symbols
         x = ca.MX.sym('x', nx, self.N + 1)  # States over the horizon
         u = ca.MX.sym('u', nu, self.N)      # Inputs over the horizon
 
         # Parameters (current and desired states)
-        x0 = ca.MX.sym('x0', nx)  # Initial state
-        x_ref = ca.MX.sym('x_ref', nx)  # Desired state
+        x0 = ca.MX.sym('x0', nx)       # Initial state
+        x_ref = ca.MX.sym('x_ref', nx) # Desired state
 
         # Objective and constraints
         cost = 0
         constraints = []
 
-        # Initial state constraint
-        constraints.append(x[:, 0] - x0)
+        # Initial state constraint (ensure equality constraint for the first state)
+        constraints.append(x[:, 0] == x0)
 
         for k in range(self.N):
-            # Dynamics constraint
-            dynamics = ca.mtimes(Ad_dense, x[:, k]) + ca.mtimes(Bd_dense, (u[:, k] ))
-            constraints.append(x[:, k + 1] - dynamics)
+            # Dynamics constraint (state update)
+            dynamics = ca.mtimes(self.Ad, x[:, k]) + ca.mtimes(self.Bd, u[:, k])
+            constraints.append(x[:, k + 1] == dynamics)
 
-            # Input constraints
-            constraints.append(u[0, k] >= 0)  # Thrust >= 0
+            # State constraints (inequality bounds)
+            # constraints.append(x[0, k] >= -10.0)  # x-position lower bound
+            # constraints.append(x[0, k] <= 10.0)   # x-position upper bound
+            # constraints.append(x[1, k] >= -10.0)  # y-position lower bound
+            # constraints.append(x[1, k] <= 10.0)   # y-position upper bound
+            # constraints.append(x[2, k] >= 0.0)    # z-position lower bound
+            # constraints.append(x[2, k] <= 5.0)    # z-position upper bound
+
+            # constraints.append(x[3, k] >= -2.0)   # x-velocity lower bound
+            # constraints.append(x[3, k] <= 2.0)    # x-velocity upper bound
+            # constraints.append(x[4, k] >= -2.0)   # y-velocity lower bound
+            # constraints.append(x[4, k] <= 2.0)    # y-velocity upper bound
+            # constraints.append(x[5, k] >= -1.0)   # z-velocity lower bound
+            # constraints.append(x[5, k] <= 1.0)    # z-velocity upper bound
+
+            # constraints.append(x[8, k] >= -1.0)  # yaw rate lower bound
+            # constraints.append(x[8, k] <= 1.0)   # yaw rate upper bound
+
+            # # Input constraints (inequality bounds)
+            # constraints.append(u[0, k] >= 0)      # Thrust >= 0
+            # constraints.append(u[0, k] <= 10)     # Thrust <= 10
+            # constraints.append(u[1, k] >= -0.01)  # Torque x constraint
+            # constraints.append(u[1, k] <= 0.01)
+            # constraints.append(u[2, k] >= -0.01)  # Torque y constraint
+            # constraints.append(u[2, k] <= 0.01)
+            # constraints.append(u[3, k] >= -0.01)  # Torque z constraint
+            # constraints.append(u[3, k] <= 0.01)   # Torque z constraint
 
             # Accumulate cost
-            cost += ca.mtimes([(x[:, k] - x_ref).T, self.Q, (x[:, k] - x_ref)]) + ca.mtimes([u[:, k].T, self.R, u[:, k]])
+            cost += ca.mtimes([(x[:, k] - x_ref).T, self.Q, (x[:, k] - x_ref)])
+            cost += ca.mtimes([u[:, k].T, self.R, u[:, k]])
 
         # Terminal cost
         cost += ca.mtimes([(x[:, self.N] - x_ref).T, self.Q, (x[:, self.N] - x_ref)])
 
         # Define the optimization problem
         opt_variables = ca.vertcat(ca.reshape(x, -1, 1), ca.reshape(u, -1, 1))
-        constraints = ca.vertcat(*constraints)
+        g = ca.vertcat(*constraints)  # Stack all constraints
 
         nlp = {
             'x': opt_variables,
             'f': cost,
-            'g': constraints,
+            'g': g,
             'p': ca.vertcat(x0, x_ref)
         }
 
+        # Solve the optimization problem
         solver = ca.nlpsol('solver', 'ipopt', nlp)
 
-        # Solve the problem
+        # Initial guess and bounds
         x0_flat = np.zeros((nx * (self.N + 1),))
         u0_flat = np.zeros((nu * self.N,))
         initial_guess = np.concatenate([x0_flat, u0_flat])
 
-        # Constraint bounds
-        lbg = np.zeros(constraints.shape[0])
-        ubg = np.zeros(constraints.shape[0])
+        lbg = np.zeros(g.shape[0])  # Lower bounds for constraints (equality constraints)
+        ubg = np.zeros(g.shape[0])  # Upper bounds for equality constraints
 
         # Solve
         solution = solver(
@@ -322,20 +386,28 @@ class RPMCalcCasADi:
 
         # Extract first control input
         optimal_u = opt_u[:, 0]
+        optimal_u += self.m * self.g
         predicted_states = opt_x
         thrust = optimal_u[0]
         tau = optimal_u[1:4]
 
-        print("Optimal U: ", optimal_u)
-        # Map to motor RPMs using mixer matrix
-        thrust += self.m * self.g
-        thrust = (ca.sqrt(thrust / (4 * self.KF)) - self.pwm2rpm_const) / self.pwm2rpm_scale
-        pwm = thrust + ca.mtimes(self.mixer_matrix, tau)
-        pwm = ca.fmax(ca.fmin(pwm, self.max_pwm), self.min_pwm)  # Clip PWM
+        return optimal_u, predicted_states, thrust, tau
 
-        rpms = self.pwm2rpm_scale * pwm + self.pwm2rpm_const
+        # print("Optimal U: ", optimal_u)
+        # # Map to motor RPMs using mixer matrix
+        # #thrust += self.m * self.g
+        
+        # thrust += self.m * self.g
+        # thrust = (ca.sqrt(thrust / (4 * self.KF)) - self.pwm2rpm_const) / self.pwm2rpm_scale
 
-        return rpms, predicted_states, thrust, tau
+        # print("Thrust: ", thrust)
+        # pwm = thrust + ca.mtimes(self.mixer_matrix, tau)
+        # print("PWM: ", pwm)
+        # pwm = ca.fmax(ca.fmin(pwm, self.max_pwm), self.min_pwm)  # Clip PWM
+        # print("Clipped PWM: ", pwm)
+        # rpms = self.pwm2rpm_scale * pwm + self.pwm2rpm_const
+
+        # return optimal_u, predicted_states, thrust, tau
 
 
 

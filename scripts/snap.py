@@ -22,6 +22,7 @@ import minsnap_trajectories as ms
 # The class hierarchical_control uses 2 MPCs to control the position and attitude of the drone by computing the thrust and torques then converting them to RPMs
 from experimental.hierarchical_control import hierarchical_control
 import casadi as ca
+from scipy.interpolate import interp1d
 
 def main():
     duration_sec = 50  
@@ -140,7 +141,7 @@ def main():
 
     # Prepare for simulation
     waypoints = np.array(path)
-    waypoints = np.array([waypoints[0], waypoints[-1]])
+    #waypoints = np.array([waypoints[0], waypoints[-1]])
     waypoint_idx = 0
     target_speed = 1.0  
     action = np.zeros((1, 4))
@@ -160,10 +161,10 @@ def main():
 # I am not 100% sure that this function creates a trajectory that has 0.0 yaw angle so this could be looked into
     reference_states = generate_reference_states(
     waypoints=waypoints,
-    total_time=15.0,  
+    set_speed=0.3,  
     vehicle_mass=0.027000,
     drag_params=drag_params,
-    yaw= None,
+    yaw= None,  # Fixed yaw angle
     yaw_rate=None  # Fixed yaw angle
 )
 
@@ -171,8 +172,18 @@ def main():
     positions = reference_states["positions"]
     velocities = reference_states["velocities"]
     attitudes = reference_states["attitudes"]
+    
+    attitudes = Rotation.from_quat(attitudes).as_euler('xyz', degrees=False)
+    attitudes[:, 2] = 0.0  # Fixed yaw angle
     time_samples = reference_states["time_samples"]
     angular_velocities =reference_states["angular_velocities"]
+    angular_velocities[:, 2] = 0.0  # Fixed yaw rate
+
+    pos_interp = interp1d(time_samples, positions, axis=0, kind='linear')
+    vel_interp = interp1d(time_samples, velocities, axis=0, kind='linear')
+    att_interp = interp1d(time_samples, attitudes, axis=0, kind='linear')
+    ang_vel_interp = interp1d(time_samples, angular_velocities, axis=0, kind='linear')
+
 
     # # Trajectory generation does not provide angular velocities and accelerations, so we need to compute them that is done here
     # desired_angular_velocities = []
@@ -237,16 +248,17 @@ def main():
 ##############################################################################################################################################################################
     #MPC WEIGHTS FOR RPM CALCULATION
     Q_rpm = np.diag([
-        50, 50, 1,       # Position weights
-        10, 10, 1,    # Velocity weights
-        1, 1, 1, # Attitude weights
-        1, 1, 1 # Angular velocity weights (scaled down)
+        50, 50, 50,       # Position weights
+        30, 30, 30,    # Velocity weights
+        1, 1, 1,        # Attitude weights
+        10, 10, 10      # Angular velocity weights (scaled down)
     ])
 
-    R_rpm = np.diag([10, 0.01, 0.01, 0.01])  # Higher priority on smooth inputs
+    R_rpm = np.diag([1, 1, 1, 1])  # Higher priority on smooth inputs
 
     # Initialize the MPC controller with the desired state
-    rpm_mpc = RPMCalcCasADi(Q=Q_rpm, R=R_rpm, N=3, dt=0.01)
+    #rpm_mpc = RPMCalcCasADi(Q=Q_rpm, R=R_rpm, N=5, dt=env.CTRL_TIMESTEP)
+    rpm_mpc = rpm_calc(Q=Q_rpm, R=R_rpm, N=5, dt=env.CTRL_TIMESTEP)
 
     # ## HERE TUNE MPC PARAMETERS and initialie MPC class
     # Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
@@ -281,25 +293,30 @@ def main():
 
         if time_index != len(positions) - 1:
             # Compute the desired state at the current time index
-            elapsed_time = i * env.CTRL_TIMESTEP  # Calculate time since the start of the simulation
+            #elapsed_time = i * env.CTRL_TIMESTEP  # Calculate time since the start of the simulation
 
-            # Update desired position based on the time index (trajectory following)
-            # if elapsed_time >= time_samples[time_index + 1]:
-            time_index += 1
+            # # Update desired position based on the time index (trajectory following)
+            # # if elapsed_time >= time_samples[time_index + 1]:
+            # time_index += 1
 
-            # get the trajectory at the current time index
-            desired_pos = positions[time_index]
-            desired_vel = velocities[time_index]
-            desired_attitude = attitudes[time_index]
-            angular_velocity = angular_velocities[time_index]  # Precomputed angular velocity
+            # # get the trajectory at the current time index
+            # desired_pos = positions[time_index]
+            # desired_vel = velocities[time_index]
+            # desired_attitude = attitudes[time_index]
+            # angular_velocity = angular_velocities[time_index]  # Precomputed angular velocity
+            elapsed_time = i * env.CTRL_TIMESTEP  # Current time
+            desired_pos = pos_interp(elapsed_time)
+            desired_vel = vel_interp(elapsed_time)
+            desired_attitude = att_interp(elapsed_time)
+            angular_velocity = ang_vel_interp(elapsed_time)
 
             # Convert quaternion to roll, pitch, yaw
-            roll, pitch, yaw = p.getEulerFromQuaternion(desired_attitude)
+            
 
            #yaw = 0.0  # Fixed yaw angle
 
             # DESIRED STATE
-            desired_state = np.hstack([desired_pos, desired_vel, roll, pitch, yaw, angular_velocity])
+            desired_state = np.hstack([desired_pos, desired_vel, desired_attitude, angular_velocity])
 
             # VISUALIZES THE DESIRED POSITION in CYAN
             p.addUserDebugLine(
@@ -307,7 +324,7 @@ def main():
                 lineToXYZ=[desired_pos[0], desired_pos[1], 0],  # Connect to ground for reference
                 lineColorRGB=[0, 1, 1],  
                 lineWidth=2.0,           # Thicker line
-                lifeTime=1/env.CTRL_TIMESTEP  # Persistent for one step
+                lifeTime=0 # Persistent for one step
             )
 
             # Current state of the quadrotor (obtain angular velocity from PyBullet if available)
@@ -327,6 +344,8 @@ def main():
             print("\n--- Desired State ---")
             for label, value in zip(state_labels, desired_state):
                 print(f"{label:<25}: {value}")
+            
+
 
             # Print Current State
             print("\n--- Current State ---")
@@ -340,7 +359,7 @@ def main():
             # MPC SOLVING FOR RPMS
             ###################################################################################################
             # SINGLE MPC
-            rpms, predicted_states, _, _ = rpm_mpc.solve_mpc(current_state, desired_state)
+            optimal_u, predicted_states, _, _ = rpm_mpc.solve_mpc(current_state, desired_state)
 
             # 2 MPC CONTROLLERS ONE FOR POSITION THE OTHER FOR ATTITUDE
             #thrust, tau, predicted_states = hierarchical_controller.compute_mpc(current_state, desired_state)
@@ -350,15 +369,17 @@ def main():
             # print("\n--- Computed RPMs ---")
             # for i, rpm in enumerate(rpms, 1):
             #     print(f"Motor {i} RPM               : {rpm:.1f}")
-            rpms_array = rpms.full() if isinstance(rpms, ca.DM) else rpms
+            optimal_u = optimal_u.full() if isinstance(optimal_u, ca.DM) else optimal_u
 
             # Iterate over the array or list
-            for i, rpm in enumerate(rpms_array, 1):
-                print(f"Motor {i}: {rpm}")
+            # for i, rpm in enumerate(optimal_u, 1):
+            #     print(f"Motor {i}: {rpm}")
+            
 
-            rpms_array = rpms_array.reshape(4,)
+            optimal_u = optimal_u.reshape(4,)
 
-            action[0, :] = rpms_array  # np.hstack((u_opt, [target_speed]))
+            print(f"Optimal RPMs: {optimal_u}")
+            action[0, :] = optimal_u  # np.hstack((u_opt, [target_speed]))
             
         # else:
             
@@ -367,11 +388,25 @@ def main():
         #     action[0, :] = rpms
 
 
+        
+        
+
+        obs, reward, terminated, truncated, info = env.step(action)
+        
+
+
+        logger.log(
+            drone=0,
+            timestamp=i * env.CTRL_TIMESTEP,
+            state=obs[0],
+            control= desired_state
+        )
+
         # visualize the MPC predictions (scaled!)
         scaling_factor = 0.5  
 
         for j in range(predicted_states.shape[1] - 1):
-            start_point = predicted_states[:3, j]
+            start_point = current_pos[:3]
             next_point = predicted_states[:3, j + 1]
 
             # Compute the direction vector and scale it
@@ -385,24 +420,12 @@ def main():
                 lineToXYZ=scaled_point,
                 lineColorRGB=[0, 1, 0],
                 lineWidth = 2.0,  # Green color for the prediction
-                lifeTime=env.CTRL_TIMESTEP,  # Keep the line until the next update
+                lifeTime=0,  # Keep the line until the next update
                 physicsClientId=env.CLIENT
             )
-        
-
-        obs, reward, terminated, truncated, info = env.step(action)
-        
 
 
-        logger.log(
-            drone=0,
-            timestamp=i * env.CTRL_TIMESTEP,
-            state=obs[0],
-            control=np.hstack([desired_pos, np.zeros(9)])
-        )
-
-
-        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        #print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
         # for body_id in sphere_bodies:
         #     p.removeBody(body_id)
@@ -424,7 +447,7 @@ def main():
 
     planner.draw_tree()
     logger.save()
-    logger.save_as_csv("simulation_rrt_star")
+    # logger.save_as_csv("simulation_rrt_star")
     print(f"Elapsed planner time: {elapsed_time:.4f} seconds")
     #logger.save()
     #logger.save_as_csv("simulation_rrt_star")
