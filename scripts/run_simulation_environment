@@ -1,7 +1,11 @@
 import numpy as np
 import time
 import pybullet as p
-from planners.rrt_star_planner import RRTStarPlanner
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from planners.rrt_star_planner_simple import RRTStarPlanner
 from gym_pybullet_drones.utils.Logger import Logger
 from environments.factory_environment import create_env 
 
