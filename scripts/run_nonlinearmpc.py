@@ -12,6 +12,9 @@ from gym_pybullet_drones.utils.Logger import Logger
 from bvh.bvh import BVHNode, build_bvh
 from control.MPCController import Simple_MPC,Linear_MPC
 from scipy.integrate import solve_ivp
+from nonlinearmpc import mpc_controller, generate_full_state_trajectory_from_array, mpc_to_motor_rpm
+import minsnap_trajectories as ms
+from scipy.spatial.transform import Rotation
 
 def main():
     duration_sec = 50  
@@ -19,32 +22,6 @@ def main():
     control_freq_hz = 48
     num_steps = int(duration_sec * control_freq_hz)
     gui = True
-
-        # Quadrotor Parameters
-    g = 9.81  # Gravity (m/s^2)
-    m = 0.027   # Mass of the quadrotor (kg)
-    I_x = 14e-5  # Moment of inertia about x-axis (kg·m^2)
-    I_y = 14e-5  # Moment of inertia about y-axis (kg·m^2)
-    I_z = 22e-5  # Moment of inertia about z-axis (kg·m^2)
-
-    # State-space matrices
-    A = np.block([
-        [np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 3))],
-        [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3)],
-        [np.zeros((3, 3)), np.array([[0, g, 0], [-g, 0, 0], [0, 0, 0]]), np.zeros((3, 3)), np.zeros((3, 3))],
-        [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3))]
-    ])
-
-    B = np.block([
-        [np.zeros((3, 4))],
-        [np.zeros((3, 4))],
-        [np.array([[0, 0, 0, 0],
-                [0, 0, 0, 0],
-                [1 / m, 0, 0, 0]])],
-        [np.array([[0, 1 / I_x, 0, 0],
-                [0, 0, 1 / I_y, 0],
-                [0, 0, 0, 1 / I_z]])]
-    ])
 
     env = StaticFactory(
         drone_model=DroneModel.CF2X,
@@ -113,20 +90,6 @@ def main():
 
     start_pos = np.copy(env.pos[0])
 
-    drone_visual = p.createVisualShape(
-        shapeType=p.GEOM_SPHERE,
-        radius=0.05,
-        rgbaColor=[0.0,0.0,1.0,1.0],
-        physicsClientId=env.CLIENT
-        )
-    
-    drone_body = p.createMultiBody(
-        baseMass=0,
-        baseVisualShapeIndex=drone_visual,
-        basePosition=start_pos,
-        physicsClientId=env.CLIENT
-    )
-
     # Initialize the RRT* planner
     planner = RRTStarPlanner(
         start=start_pos,
@@ -169,95 +132,61 @@ def main():
     # Prepare for simulation
     waypoints = np.array(path)
     waypoint_idx = 0
-    target_speed = 3.0  
     action = np.zeros((1, 4))
+    total_duration = 10.0
+    vehicle_mass = 0.027
 
+    trajectory = generate_full_state_trajectory_from_array(
+        waypoints, total_duration, control_freq_hz, vehicle_mass
+    )
+
+    positions = trajectory.position
+    velocities = trajectory.velocity
+    attitudes = trajectory.attitude
+    body_rates = trajectory.body_rates
+    
+
+    attitudes = Rotation.from_quat(attitudes).as_euler('xyz')
 
     ## HERE TUNE MPC PARAMETERS and initialie MPC class
-    Q = np.diag([10, 10, 10, 1, 1, 1])  # State weights
-    R = np.diag([0.1, 0.1,0.05])  # Input weights
-    MPC = Simple_MPC(Q=Q, R=R)
-
-    Ql = np.diag([150, 50, 50, 10, 10, 10,1, 1, 1,1, 1, 1])  # State weights
-    Rl = np.diag([0.1, 5,5,0.1])  # Input weights
-
-    LinearMPC = Linear_MPC(Q=Ql, R=Rl)
-
-    state = np.zeros(12)
-    state[0:3] = start_pos
 
     # Run the simulation
     for i in range(num_steps):
         start_time = time.time()
 
-        current_pos = obs[0][0:3]
-        current_vel = obs[0][3:6]
+        x0 = np.hstack([
+            obs[0][0:3],       # x, y, z
+            obs[0][7:10],     # roll, pitch, yaw
+            obs[0][10:13],       # velocity x, y, z
+            obs[0][13:16]    # angular velocities p, q, r
+        ])
 
         
-        if waypoint_idx < len(waypoints):
-            target_pos = waypoints[waypoint_idx]
-            pos_error = target_pos - current_pos
-            
-            distance = np.linalg.norm(pos_error)
-
-            distance = np.linalg.norm(target_pos - state[0:3])
-
-            # Move to the next waypoint if close enough
-            if distance < 0.2:
-                waypoint_idx += 1
-                continue
-            
-            current_state = np.hstack([current_pos, current_vel])
-            des_state = np.hstack([target_pos, np.zeros(3)]) # state vector is [x,y,z,vx,vy,vz]
-
-            u_opt,predicted_states = MPC.compute_mpc_control(
-                x0=current_state,
-                x_ref=des_state,
-                N=3 #Horizon
-            )
-
-            des_state = np.hstack([target_pos, np.zeros(9)])
-            u_opt_linear,_ =LinearMPC.compute_mpc_control(x0=state, x_ref=des_state, N=10)
-            print("Linear MPC Output [T, taux, tauy, tauz]",u_opt_linear)
-            
-            #print("MPC Output [vx,vy,vz]",u_opt)
-            action[0, :] = np.hstack((u_opt, [target_speed]))
-            
-        else:
-            #hover at last waypoint
-            action[0, :] = np.array([0.0, 0.0, 0.0, 0.0])
-
-
-        # visualize the MPC predictions (scaled!)
-        scaling_factor = 0.5  
-
-        for j in range(predicted_states.shape[1] - 1):
-            start_point = predicted_states[:3, j]
-            next_point = predicted_states[:3, j + 1]
-
-            # Compute the direction vector and scale it
-            direction = next_point - start_point
-            direction_normalized = direction / np.linalg.norm(direction)  # Normalize the direction vector
-            scaled_point = start_point + direction_normalized * scaling_factor  # Scale the line
-
-            # Draw the scaled line
-            p.addUserDebugLine(
-                lineFromXYZ=start_point,
-                lineToXYZ=scaled_point,
-                lineColorRGB=[0, 1, 0],  # Green color for the prediction
-                lifeTime=env.CTRL_TIMESTEP,  # Keep the line until the next update
-                physicsClientId=env.CLIENT
-            )
-        dt = env.CTRL_TIMESTEP
-        t = i*env.CTRL_TIMESTEP
-        obs, reward, terminated, truncated, info = env.step(action)
-        sol = solve_ivp(lambda t, x: A @ x + B @ u_opt_linear, [t * dt, (t + 1) * dt], state, t_eval=[(t + 1) * dt])
-        state = sol.y.flatten()
-
-        p.resetBasePositionAndOrientation(drone_body, state[0:3], [0, 0, 0, 1], physicsClientId=env.CLIENT)
-
+        target_pos = waypoints[waypoint_idx]
         
+        current_time_index = min(i, len(positions) - 1)
+        # x_ref = np.hstack([
+        #     positions[current_time_index],  # x, y, z
+        #     attitudes[current_time_index], # roll, pitch, yaw
+        #     velocities[current_time_index],  # velocity x, y, z
+        #     body_rates[current_time_index]   # angular velocities p, q, r
+        # ])
 
+        x_ref = np.hstack([[0,0,1],np.zeros(9)])
+        
+        # Solve the MPC problem
+        solution = mpc_controller(x0, x_ref)
+        optimal_controls = solution['x'][-4:].full().flatten()  # Extract motor speed controls from solution
+        print("Optimal controls: ", optimal_controls)
+        rpms = mpc_to_motor_rpm(optimal_controls)
+
+        # Apply the action
+        print("RPMs: ", rpms)
+        action[0, :] = rpms
+        
+        
+        obs, reward, terminated, truncated, info = env.step(rpms)
+        
 
         logger.log(
             drone=0,
@@ -265,9 +194,7 @@ def main():
             state=obs[0],
             control=np.hstack([target_pos, np.zeros(9)])
         )
-
-
-        print(f"Step {i}, Position: {state[0:3]}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        print(f"Step {i}, Position: {obs[0][0:3]}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
 
         if terminated or truncated:
