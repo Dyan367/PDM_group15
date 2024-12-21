@@ -1,8 +1,13 @@
 import numpy as np
 import time
 import pybullet as p
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from planners.rrt_star_planner import RRTStarPlanner
 from gym_pybullet_drones.utils.Logger import Logger
+from bvh.bvh import BVHNode, build_bvh
 from control.MPCController import Simple_MPC
 from environments.factory_environment import create_env
 
@@ -14,7 +19,7 @@ def main():
     logger = Logger(logging_freq_hz=env.CTRL_FREQ, num_drones=1)
     start_pos, goal_pos, obstacles, (x_range, y_range, z_range) = env.initialize_planning()
 
-    bvh = env.build_bvh(obstacles)
+    bvh = build_bvh(obstacles)
     use_bvh = True
 
     # Initialize the RRT* planner

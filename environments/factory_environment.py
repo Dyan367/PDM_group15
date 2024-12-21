@@ -229,10 +229,16 @@ class StaticFactory(VelocityAviary):
 
         obstacles = []
         for obs_id in self.obstacle_ids:
+            aabb_min, aabb_max = p.getAABB(obs_id, physicsClientId=self.CLIENT)
             pos, _ = p.getBasePositionAndOrientation(obs_id, physicsClientId=self.CLIENT)
-            size = p.getVisualShapeData(obs_id, physicsClientId=self.CLIENT)[0][3]
-            print(f"Obstacle Position: {pos}, Size: {size}")
-            obstacles.append({'position': np.array(pos), 'size': np.array(size)})
+            size = np.array(aabb_max) - np.array(aabb_min)
+            obstacles.append({
+                'position': np.array(pos),
+                'size': np.array(size),
+                'aabb_min': np.array(aabb_min),
+                'aabb_max': np.array(aabb_max),
+            })
+            print(f"Obstacle Position: {pos}, Size: {size}, AABB Min: {aabb_min}, AABB Max: {aabb_max}")
 
         arena_size = self.obstacle_config['arena_size']
         x_range = [-arena_size / 2, arena_size / 2]
