@@ -225,7 +225,7 @@ class StaticFactory(VelocityAviary):
         - arena_ranges: Ranges for x, y, and z dimensions
         """
         start_pos = np.copy(self.pos[0])
-        goal_pos = np.array([-5.0, 0.0, 1.0]) 
+        goal_pos = np.array([-2.0, 0.0, 1.0]) 
 
         obstacles = []
         for obs_id in self.obstacle_ids:
