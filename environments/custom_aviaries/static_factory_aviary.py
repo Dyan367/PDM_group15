@@ -4,9 +4,6 @@ import pybullet as p
 from gymnasium import spaces
 
 from gym_pybullet_drones.envs.BaseAviary import BaseAviary
-import sys
-sys.path.append('PDM_group15/environments/custom_aviaries/MPCAviary.py')
-
 from gym_pybullet_drones.envs.VelocityAviary import VelocityAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
@@ -14,10 +11,9 @@ from gym_pybullet_drones.control.DSLPIDControl import DSLPIDControl
 class StaticFactory(VelocityAviary):
 
 
-    def __init__(self, dt = 0.01,obstacle_config={}, seed=42, **kwargs):
+    def __init__(self, obstacle_config={}, seed=42, **kwargs):
         self.obstacle_config = obstacle_config
         self.seed = seed
-        self.dt = dt ## dt for discretization of state space
         super().__init__(**kwargs)
 
     def reset(self):
@@ -33,37 +29,40 @@ class StaticFactory(VelocityAviary):
         return obs, info
 
     def _addObstacles(self):
-        """
-        Add small spheres as obstacles at random positions within the arena.
-        """
         num_obstacles = self.obstacle_config.get('num_obstacles', 5)
-        obstacle_radius = self.obstacle_config.get('obstacle_radius', 0.2)  # Radius of the sphere
+        obstacle_size = self.obstacle_config.get('obstacle_size', [0.5, 0.5, 0.5])
         arena_size = self.obstacle_config.get('arena_size', 5.0)
 
         self.obstacle_ids = []
         drone_start_pos = self.INIT_XYZS[0]
 
-        for _ in range(num_obstacles):
-            while True:
-                # Randomize position within the arena boundaries
-                x = np.random.uniform(-arena_size / 2, arena_size / 2)
-                y = np.random.uniform(-arena_size / 2, arena_size / 2)
-                z = np.random.uniform(0.5, 2.5)  
+        rows = int(np.sqrt(num_obstacles))
+        cols = rows if rows > 0 else 1  
+        shelf_spacing_x = arena_size / cols
+        shelf_spacing_y = arena_size / rows
 
-                # Ensure the sphere is not too close to the drone start position
+        for i in range(rows):
+            for j in range(cols):
+                if len(self.obstacle_ids) >= num_obstacles:
+                    break
+
+                x = -arena_size / 2 + (j + 0.5) * shelf_spacing_x
+                y = -arena_size / 2 + (i + 0.5) * shelf_spacing_y
+                z = obstacle_size[2] / 2
+
                 distance = np.linalg.norm(np.array([x, y]) - drone_start_pos[:2])
-                if distance <= obstacle_radius * 2:  # Avoid too-close placement
+                if distance <= obstacle_size[0]:
                     continue
 
                 collision_shape = p.createCollisionShape(
-                    shapeType=p.GEOM_SPHERE,
-                    radius=obstacle_radius,
+                    shapeType=p.GEOM_BOX,
+                    halfExtents=[obstacle_size[0] / 2, obstacle_size[1] / 2, obstacle_size[2] / 2],
                     physicsClientId=self.CLIENT
                 )
                 visual_shape = p.createVisualShape(
-                    shapeType=p.GEOM_SPHERE,
-                    radius=obstacle_radius,
-                    rgbaColor=[1.0, 0.0, 0.0, 1],  # Sphere color
+                    shapeType=p.GEOM_BOX,
+                    halfExtents=[obstacle_size[0] / 2, obstacle_size[1] / 2, obstacle_size[2] / 2],
+                    rgbaColor=[0.6, 0.4, 0.2, 1],
                     physicsClientId=self.CLIENT
                 )
                 obstacle_id = p.createMultiBody(
@@ -73,11 +72,7 @@ class StaticFactory(VelocityAviary):
                     basePosition=[x, y, z],
                     physicsClientId=self.CLIENT
                 )
-
-                # Add the sphere to the list of obstacles and break out of the loop
                 self.obstacle_ids.append(obstacle_id)
-                break
-
 
 
         
