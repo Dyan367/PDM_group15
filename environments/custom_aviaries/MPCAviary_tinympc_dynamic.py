@@ -8,8 +8,7 @@ import matplotlib.pyplot as plt
 
 from gym_pybullet_drones.envs.BaseAviary import BaseAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
-from environments.shapes import create_box_shape, create_cylinder_shape, add_bounding_box, move_shape_dynamic, \
-    move_shape_reset, move_shape_random
+from environments.shapes import create_box_shape
 
 import tinympc
 
@@ -227,7 +226,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
     def _addObstacles(self):
         alpha = 1
-        height = 2.0
+        height = 1
         width = 0.2
 
         # Wall configurations

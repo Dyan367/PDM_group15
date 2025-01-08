@@ -20,7 +20,7 @@ class RRTStarPlannerV2:
                  max_iter=3000, 
                  step_size=0.3,
                  goal_sample_rate=0.2, 
-                 search_radius=2.0):
+                 search_radius=0.5):
         
         self.start = Node(start)
         self.goal = Node(goal)

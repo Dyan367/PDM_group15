@@ -61,11 +61,11 @@ if __name__ == "__main__":
     }
 
     start_pos = np.array([0.0, 0.0, 1.0])
-    goal_pos = np.array([0, 0, 4.0])
+    goal_pos = np.array([13, 2.5, 2.0])
 
     obstacle_config = {
         'num_obstacles': 24,
-        'obstacle_size': [2, 0.5, 10.0],
+        'obstacle_size': [2, 0.5, 2.0],
         'arena_size': 10.0
     }
 
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     arena_size = env.obstacle_config['arena_size']
     x_range = [-arena_size / 2, arena_size / 2]
     y_range = [-arena_size / 2, arena_size / 2]
-    z_range = [0.5, 1.0]
+    z_range = [0.5, 2.0]
 
     
 
@@ -151,10 +151,10 @@ if __name__ == "__main__":
         x_range=[-30.0, 30.0],
         y_range=[-30.0, 30.0],
         z_range=z_range,
-        max_iter=25000,
+        max_iter=2500,
         step_size=0.2,
         goal_sample_rate=0.3,
-        search_radius=10
+        search_radius=1.0
     )
 
     path = planner.plan()
