@@ -17,6 +17,18 @@ def main():
 
     start_pos, goal_pos, obstacles, (x_range, y_range, z_range) = env.initialize_planning()
 
+    start_pos_cam = [10.0, 0.0, 1.0]  # Starting position of the drone
+    camera_distance = 20.0        # Distance from the camera to the object
+    camera_yaw = 0.0             # Camera yaw angle
+    camera_pitch = -89.0         # Camera pitch angle to look straight down
+    p.resetDebugVisualizerCamera(
+        cameraDistance=camera_distance,
+        cameraYaw=camera_yaw,
+        cameraPitch=camera_pitch,
+        cameraTargetPosition=start_pos_cam,
+        physicsClientId=env.CLIENT
+    )
+
     planner = RRTStarPlanner(
         start=start_pos,
         goal=goal_pos,
@@ -24,7 +36,7 @@ def main():
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=10000,
+        max_iter=100000,
         step_size=0.2,
         goal_sample_rate=0.1,
         search_radius=0.5
