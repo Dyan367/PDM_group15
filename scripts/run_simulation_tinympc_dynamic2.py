@@ -7,10 +7,16 @@ import matplotlib.pyplot as plt
 import logging
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
+import sys
+import os
 
-from environments.custom_aviaries.MPCAviary_tinympc_dynamic import MPCAviaryDynamicTinyMPC
+# Add the parent directory of 'environments' to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from environments.custom_aviaries.MPCAviary_tinympc_dynamic2 import MPCAviaryDynamicTinyMPC
 
 from planners.rrt_star_plannerV2 import RRTStarPlannerV2
+from planners.bvh_tree import build_bvh
 
 
 def waypoint_to_x_target(waypoint, current_position, max_velocity=5.0):
@@ -24,6 +30,7 @@ def waypoint_to_x_target(waypoint, current_position, max_velocity=5.0):
         desired_velocity = np.zeros(3)
     x_target[3:6] = desired_velocity
     return x_target
+
 
 def find_closest_waypoint(current_pos, waypoints, start_idx=0):
     """
@@ -55,13 +62,7 @@ if __name__ == "__main__":
     }
 
     start_pos = np.array([0.0, 0.0, 1.0])
-    goal_pos = np.array([20, 1, 2.0])
-
-    obstacle_config = {
-        'num_obstacles': 24,
-        'obstacle_size': [2, 0.5, 10.0],
-        'arena_size': 10.0
-    }
+    goal_pos = np.array([1, 1, 1])
 
     env = MPCAviaryDynamicTinyMPC(
         drone_model=DroneModel.CF2X,
@@ -80,39 +81,78 @@ if __name__ == "__main__":
         output_folder='results',
         mpc_params=mpc_params,
         x_target=None,
-        obstacle_config=obstacle_config,
+        obstacle_config={
+            'environment_width': 10.0,
+            'environment_height': 10.0,
+            'wall_thickness': 1.0,
+            'wall_height': 2.0,
+            'include_floor': True
+        },
         seed=42
     )
 
     obs, info = env.reset()
     start_pos = env.pos[0].copy()
 
-    obstacles = []
-    for obs_id in env.obstacle_ids:
-        pos, _ = p.getBasePositionAndOrientation(obs_id, physicsClientId=env.CLIENT)
-        shape_data = p.getVisualShapeData(obs_id, physicsClientId=env.CLIENT)[0]
-        half_extents = shape_data[3]
-        full_size = np.array(half_extents) * 2
-        obstacles.append({'position': np.array(pos), 'size': full_size})
+    aabbs = []
+    dilation = 0.1  # Dilation amount
 
-    arena_size = env.obstacle_config['arena_size']
+    for obs_id in env.obstacle_ids:
+        # Get the AABB for the obstacle
+        aabb_min, aabb_max = p.getAABB(obs_id, physicsClientId=env.CLIENT)
+
+        # Convert to numpy arrays
+        aabb_min = np.array(aabb_min)
+        aabb_max = np.array(aabb_max)
+
+        # Dilate the AABB
+        aabb_min -= dilation
+        aabb_max += dilation
+
+        # Append the dilated AABB as a dictionary
+        aabbs.append({'aabb_min': aabb_min, 'aabb_max': aabb_max})
+
+    for aabb in aabbs:
+        aabb_min = aabb['aabb_min']
+        aabb_max = aabb['aabb_max']
+
+        # Calculate center and extent
+        center = (aabb_min + aabb_max) / 2
+        extent = (aabb_max - aabb_min) / 2
+
+        # Create a transparent visual shape
+        visual_shape_id = p.createVisualShape(
+            shapeType=p.GEOM_BOX,
+            halfExtents=extent,
+            rgbaColor=[1, 0, 0, 0.3],  # Green color with 30% opacity
+            physicsClientId=env.CLIENT
+        )
+
+        # Create the body with only the visual shape (no collision or dynamics)
+        p.createMultiBody(
+            baseVisualShapeIndex=visual_shape_id,
+            basePosition=center,
+            physicsClientId=env.CLIENT
+        )
+
+    bvh_tree = build_bvh(aabbs)
+
+    arena_size = env.obstacle_config['environment_width']  # Updated to match new obstacle config
     x_range = [-arena_size / 2, arena_size / 2]
     y_range = [-arena_size / 2, arena_size / 2]
     z_range = [0.5, 2.0]
 
-    print(env.obstacles_info)
-
     planner = RRTStarPlannerV2(
         start=start_pos,
         goal=goal_pos,
-        obstacles_info=env.obstacles_info,
+        bvh_tree=bvh_tree,
         x_range=[-30.0, 30.0],
         y_range=[-30.0, 30.0],
         z_range=z_range,
         max_iter=2500,
         step_size=0.2,
         goal_sample_rate=0.3,
-        search_radius=10
+        search_radius=1.0
     )
 
     path = planner.plan()
@@ -125,7 +165,7 @@ if __name__ == "__main__":
         p.addUserDebugLine(
             lineFromXYZ=path[i],
             lineToXYZ=path[i + 1],
-            lineColorRGB=[1, 0, 0],
+            lineColorRGB=[0, 0, 1],
             lifeTime=0,
             physicsClientId=env.CLIENT
         )

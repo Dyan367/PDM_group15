@@ -224,67 +224,111 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
         return initial_state, info
 
+    def _create_environment(self, environment_grid, wall_thickness=0.2, wall_height=2.0, floor=True, grid_size=10.0):
+        """
+        Creates an environment based on a grid system, where each cell in the grid represents a different object.
+
+        Parameters:
+        - environment_grid (list of list of int): A 2D grid representing the environment layout.
+        - wall_thickness (float): Thickness of the walls.
+        - wall_height (float): Height of the walls.
+        - floor (bool): Whether to include a floor in the environment.
+        - grid_size (float): The size of each grid cell.
+        """
+        alpha = 0.8  # Transparency for the walls and floor
+        rows = len(environment_grid)  # Number of rows in the grid
+        cols = len(environment_grid[0])  # Number of columns in the grid
+
+        # Add floor if needed
+        if floor:
+            floor_size = [cols * grid_size / 2, rows * grid_size / 2, wall_thickness / 2]
+            floor_position = [0, 0, -wall_thickness / 2]
+            floor_id = create_box_shape(
+                size=floor_size,
+                color=[0.5, 0.5, 0.5, alpha],  # Gray floor
+                client_id=self.CLIENT
+            )
+            p.resetBasePositionAndOrientation(floor_id, floor_position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
+            self.obstacle_ids.append(floor_id)
+
+        # Loop through the grid and place walls or obstacles
+        for i in range(rows):
+            for j in range(cols):
+                grid_value = environment_grid[i][j]
+
+                # Calculate the position of each element based on the grid
+                position = [(j - cols / 2) * grid_size, (i - rows / 2) * grid_size, wall_height / 2]
+
+                if grid_value == 1:
+                    # Place a wall
+                    wall_size = [wall_thickness/2, grid_size/2, wall_height]  # Wall dimensions
+                    wall_id = create_box_shape(
+                        size=wall_size,
+                        color=[0.6, 0.4, 0.2, alpha],  # Brown walls
+                        client_id=self.CLIENT
+                    )
+                    p.resetBasePositionAndOrientation(wall_id, position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
+                    self.obstacle_ids.append(wall_id)
+
+                elif grid_value == 2:
+                # Place an obstacle (lifted higher on the Z-axis)
+                # Apply a custom offset to the Z-coordinate for obstacles
+                    obstacle_position = [position[0], position[1], position[2] - 1 ]  # drop the obstacle
+
+                    obstacle_size = [grid_size / 2, grid_size / 2, wall_height / 8]
+                    obstacle_id = create_box_shape(
+                        size=obstacle_size,
+                        color=[0.6, 0.4, 0.2, alpha],  # Brown walls
+                        client_id=self.CLIENT
+                    )
+                    p.resetBasePositionAndOrientation(obstacle_id, obstacle_position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
+                    self.obstacle_ids.append(obstacle_id)
+
+                elif grid_value == 3:
+                    # Place an obstacle (lifted higher on the Z-axis)
+                    # Apply a custom offset to the Z-coordinate for obstacles
+                    obstacle_position = [position[0], position[1], position[2] + 1]  # Lift the obstacle
+
+                    obstacle_size = [grid_size / 2, grid_size / 2, wall_height / 8]
+                    obstacle_id = create_box_shape(
+                        size=obstacle_size,
+                        color=[0.6, 0.4, 0.2, alpha],  # Brown walls
+                        client_id=self.CLIENT
+                    )
+                    p.resetBasePositionAndOrientation(obstacle_id, obstacle_position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
+                    self.obstacle_ids.append(obstacle_id)
+
     def _addObstacles(self):
-        alpha = 0.8
-        height = 1
-        width = 0.2
-
-        # Wall configurations
-        wallx2 = self.obstacle_config.get('wall_x2', [1.4, width, height * 2])
-        wallx5 = self.obstacle_config.get('wall_x5', [2.5, width, height * 2])
-        wallx7 = self.obstacle_config.get('wall_x7', [3.8, width, height * 2])
-        wallx72 = self.obstacle_config.get('wall_x72', [wallx7[0] * 2, width, height * 2])
-        wally2 = self.obstacle_config.get('wall_y2', [width, 1.4, height * 2])
-        wally22 = self.obstacle_config.get('wall_y22', [width, wally2[1] * 2 - width, height * 2])
-
-        # Define wall sizes
-        wall_sizes = {
-            'wall_x2': wallx2,
-            'wall_x5': wallx5,
-            'wall_x7': wallx7,
-            'wall_x72': wallx72,
-            'wall_y2': wally2,
-            'wall_y22': wally22
-        }
-
-        # Define wall positions
-        wall_positions = {
-            'wall_x2': [[wallx2[0] + wallx5[0] * 3 + wallx7[0] - width * 1.5, wally2[1] - width, height]],
-            'wall_x5': [
-                [wallx5[0] / 2, wally2[1] - width, height],
-                [wallx5[0] / 2, -wally2[1] + width, height],
-                [wallx5[0] / 2 + width * 0.5, 3 * (wally2[1] - width), height],
-                [wallx72[0] + wallx2[0] - width, 3 * (wally2[1] - width), height],
-                [wallx5[0] * 2 + wallx7[0] + width / 1.5, -wally2[1] + width, height]
-            ],
-            'wall_x7': [[wallx5[0] * (4 / 3) + wallx7[0] + width / 1.5, -wallx5[0] - wally2[1] + width * 1.5, height]],
-            'wall_x72': [[wallx5[0] - width * 2 + wallx2[0] * 3, 4 * (wallx2[0] - width) + wallx2[0] - width, height]],
-            'wall_y2': [
-                [-wallx5[0] / 2 - width / 2, 0, height],
-                [wallx5[0] * 2 + (-wallx5[0] / 2 - width / 1.5), -wallx5[0] + width / 2, height],
-                [wallx5[0] * 2 + (-wallx5[0] / 2 - width / 1.5) + wallx7[0] * 2, -wallx5[0] + width / 2, height],
-                [wallx5[0] * 2 + (-wallx5[0] / 2 - width / 1.5), wallx5[0] - width / 2, height],
-                [-wallx5[0] / 2 - width / 2, 4 * (wallx2[0] - width), height],
-                [wallx5[0] * 3 + wallx7[0] - width, 2.4, height]
-            ],
-            'wall_y22': [
-                [wallx5[0] * 2 + (-wallx5[0] / 2 - width / 1.5) + wally2[1] * 2, -wally2[1] + wally22[1], height],
-                [wallx2[0] * 2 + wallx5[0] * 3 + wallx7[0] - width * 2, 3 * (wally2[1] - width), height]
-            ]
-        }
-
-        # Create obstacles
+        """
+        Overrides the `_addObstacles` method to create an environment based on a grid layout.
+        """
         self.obstacle_ids = []
-        for wall_name, positions in wall_positions.items():
-            size = wall_sizes[wall_name]
-            for pos in positions:
-                wall_id = create_box_shape(
-                    size=size,
-                    color=[0.6, 0.4, 0.2, alpha],  # Brown box
-                    client_id=self.CLIENT
-                )
-                p.resetBasePositionAndOrientation(wall_id, pos, [0, 0, 0, 1], physicsClientId=self.CLIENT)
-                self.obstacle_ids.append(wall_id)
+
+        # Define the environment grid
+        environment_grid = [
+            [1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 3, 1],
+            [1, 0, 3, 0, 0, 0, 3, 1],
+            [1, 0, 3, 0, 0, 2, 3, 1],
+            [1, 0, 3, 0, 0, 1, 3, 1],
+            [1, 0, 3, 0, 0, 1, 3, 1],
+            [1, 0, 3, 0, 0, 1, 3, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1]
+        ]
+
+        wall_thickness = self.obstacle_config.get('wall_thickness', 1.0)
+        wall_height = self.obstacle_config.get('wall_height', 2.0)
+        include_floor = self.obstacle_config.get('include_floor', True)
+        grid_size = self.obstacle_config.get('grid_size', 1.0)  # Grid size for the walls
+
+        # Create the environment based on the grid
+        self._create_environment(
+            environment_grid=environment_grid,
+            wall_thickness=wall_thickness,
+            wall_height=wall_height,
+            floor=include_floor,
+            grid_size=grid_size
+        )
 
     def step(self, action=None):
 
