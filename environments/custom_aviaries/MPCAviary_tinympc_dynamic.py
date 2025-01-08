@@ -8,9 +8,11 @@ import matplotlib.pyplot as plt
 
 from gym_pybullet_drones.envs.BaseAviary import BaseAviary
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
-from environments.shapes import create_box_shape, create_cylinder_shape, add_bounding_box, move_shape_dynamic, move_shape_reset, move_shape_random
+from environments.shapes import create_box_shape, create_cylinder_shape, add_bounding_box, move_shape_dynamic, \
+    move_shape_reset, move_shape_random
 
 import tinympc
+
 
 class MPCAviaryDynamicTinyMPC(BaseAviary):
     """
@@ -37,7 +39,6 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
                  x_target=None,
                  obstacle_config={},
                  seed=42):
-
 
         self.moving_bodies = []
         self.crane = None
@@ -101,7 +102,6 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         logging.info(f"Target set to: {self.x_target}")
 
         self.obstacle_ids = []
-        
 
         # ---- Setup TinyMPC properly ----
         self._tinympc_setup()
@@ -127,16 +127,14 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         # setup(A, B, Q, R, N, x_min=None, x_max=None, u_min=None, u_max=None, xf_min=None, xf_max=None, settings=None)
         self.tinympc_prob.setup(
             A_f, B_f, Q_f, R_f,
-            self.N,                            # horizon length
+            self.N,  # horizon length
             x_min=x_min_f,
             x_max=x_max_f,
             u_min=u_min_f,
             u_max=u_max_f,
-            xf_min=None,                       # final-state bounds, if you want
+            xf_min=None,  # final-state bounds, if you want
             xf_max=None
         )
-
-
 
     def set_target(self, new_target):
         if new_target.shape != (12,):
@@ -146,7 +144,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
     def _initialize_mpc_matrices(self):
         mass = self.M
-        Ixx, Iyy, Izz = self.J[0,0], self.J[1,1], self.J[2,2]
+        Ixx, Iyy, Izz = self.J[0, 0], self.J[1, 1], self.J[2, 2]
         g = self.G
 
         d_x = 9.1785e-7
@@ -154,41 +152,41 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         d_z = 10.311e-7
 
         A = np.eye(12)
-        A[0,3] = self.dt
-        A[1,4] = self.dt
-        A[2,5] = self.dt
+        A[0, 3] = self.dt
+        A[1, 4] = self.dt
+        A[2, 5] = self.dt
 
         # Some scaled example
-        A[3,7] = (self.dt/mass)
-        A[4,6] = -(self.dt/mass)
-        A[3,3] = 1 - d_x*self.dt
-        A[4,4] = 1 - d_y*self.dt
-        A[5,5] = 1 - d_z*self.dt
+        A[3, 7] = (self.dt / mass)
+        A[4, 6] = -(self.dt / mass)
+        A[3, 3] = 1 - d_x * self.dt
+        A[4, 4] = 1 - d_y * self.dt
+        A[5, 5] = 1 - d_z * self.dt
 
-        A[6,9]  = self.dt
-        A[7,10] = self.dt
-        A[8,11] = self.dt
+        A[6, 9] = self.dt
+        A[7, 10] = self.dt
+        A[8, 11] = self.dt
 
-        B_full = np.zeros((12,4))
-        B_full[5,0]  = self.dt/mass
-        B_full[9,1]  = self.dt/Ixx
-        B_full[10,2] = self.dt/Iyy
-        B_full[11,3] = self.dt/Izz
+        B_full = np.zeros((12, 4))
+        B_full[5, 0] = self.dt / mass
+        B_full[9, 1] = self.dt / Ixx
+        B_full[10, 2] = self.dt / Iyy
+        B_full[11, 3] = self.dt / Izz
 
         c = np.zeros(12)
-        
-        c[5] = -self.dt*g
+
+        c[5] = -self.dt * g
 
         Q = np.diag([
-            10000, 10000, 30000,
-            1000,   1000,   1000,
-            0,    0,    0,
-            0,    0,    0
+            2000, 2000, 3000,
+            500, 500, 500,
+            5, 5, 5,
+            1, 1, 1
         ])
         R = np.diag([1.0, 0.2, 0.2, 0.2])
 
-        u_min = np.array([0, -np.pi/3, -np.pi/3, -np.pi/3])
-        u_max = np.array([20, np.pi/3, np.pi/3, np.pi/3])
+        u_min = np.array([0, -np.pi / 3, -np.pi / 3, -np.pi / 3])
+        u_max = np.array([20, np.pi / 3, np.pi / 3, np.pi / 3])
 
         self.A = A
         self.B_full = B_full
@@ -274,8 +272,8 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         #########################
         # Conveyors (rect box)  #
         #########################
-        conveyor_positions = [[10, 0, conveyor_size[2] / 2], 
-                            [14, 0, conveyor_size[2] / 2]]
+        conveyor_positions = [[10, 0, conveyor_size[2] / 2],
+                              [14, 0, conveyor_size[2] / 2]]
 
         for pos in conveyor_positions:
             conveyor_id = create_box_shape(
@@ -305,9 +303,9 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         y_spacing = conveyor_size[1] * 2 / (num_cylinders - 1)
 
         def add_cylinders(conveyor_pos, y_direction, color):
-            cylinder_bounds = [-np.inf, np.inf, 
-                            -conveyor_size[1], conveyor_size[1], 
-                            -np.inf, np.inf]
+            cylinder_bounds = [-np.inf, np.inf,
+                               -conveyor_size[1], conveyor_size[1],
+                               -np.inf, np.inf]
             reset_position = [
                 conveyor_pos[0],
                 conveyor_pos[1] - y_direction * conveyor_size[1],
@@ -343,7 +341,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
                 })
 
         # Add cylinders (blue / green)
-        add_cylinders([10, 0, conveyor_size[2] / 2],  1, [0, 0, 1, 1])  # Blue cylinders
+        add_cylinders([10, 0, conveyor_size[2] / 2], 1, [0, 0, 1, 1])  # Blue cylinders
         add_cylinders([14, 0, conveyor_size[2] / 2], -1, [0, 1, 0, 1])  # Green cylinders
 
         ###################
@@ -356,8 +354,8 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
             client_id=self.CLIENT
         )
         p.resetBasePositionAndOrientation(
-            self.crane, 
-            [10, 0, 5.0], 
+            self.crane,
+            [10, 0, 5.0],
             [0, 0, 0, 1],
             physicsClientId=self.CLIENT
         )
@@ -377,9 +375,9 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         #################################
         num_people = 1
         person_size = [0.4, 0.4, 3]
-        person_bounds = [18, 28, -6, 6, 0, person_size[2]*2]
+        person_bounds = [18, 28, -6, 6, 0, person_size[2] * 2]
         add_bounding_box(person_bounds, client_id=0)  # not an obstacle, just visual
-        max_speed = 10.0  
+        max_speed = 10.0
         change_interval = 2.0
 
         for i in range(num_people):
@@ -411,7 +409,6 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
                 "size": np.array(person_size),
                 "phys_id": person_id
             })
-
 
     def step(self, action=None):
 
@@ -462,31 +459,30 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
         # Apply
         thrust_z, torque_x, torque_y, torque_z = u_opt
-        print(f"Time {t*self.dt:.1f}s - Control: Tz={thrust_z:.2f}, Tx={torque_x:.2f}, Ty={torque_y:.2f}, Tz={torque_z:.2f}")
+        print(
+            f"Time {t * self.dt:.1f}s - Control: Tz={thrust_z:.2f}, Tx={torque_x:.2f}, Ty={torque_y:.2f}, Tz={torque_z:.2f}")
         self._apply_control_inputs(thrust_z, torque_x, torque_y, torque_z)
 
         # for _ in range(self.PYB_STEPS_PER_CTRL):
         #     p.stepSimulation(physicsClientId=self.CLIENT)
         #     print(self.PYB_STEPS_PER_CTRL)
         #     print(self.PYB_TIMESTEP)
-        #     time.sleep(self.PYB_TIMESTEP) 
+        #     time.sleep(self.PYB_TIMESTEP)
 
         for _ in range(self.PYB_STEPS_PER_CTRL):  # now 240
             p.stepSimulation()
-            time.sleep(1/60)  # 1/240
-            
-    
-        
+            time.sleep(1 / 60)  # 1/240
+
         self._updateAndStoreKinematicInformation()
 
-        if t+1 <= self.max_steps:
-            self.state_history[t+1, :] = self._get_current_state()
+        if t + 1 <= self.max_steps:
+            self.state_history[t + 1, :] = self._get_current_state()
 
         distance = np.linalg.norm(current_state[:3] - self.x_target[:3])
         if distance < self.proximity_threshold:
             terminated = False
             truncated = False
-            logging.info(f"Target reached at step {t}, time {t*self.dt:.1f} s.")
+            logging.info(f"Target reached at step {t}, time {t * self.dt:.1f} s.")
         else:
             terminated = False
             truncated = False
@@ -519,7 +515,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
             objectUniqueId=self.DRONE_IDS[0],
             linkIndex=-1,
             forceObj=thrust_body.tolist(),
-            posObj=[0,0,0],
+            posObj=[0, 0, 0],
             flags=p.LINK_FRAME
         )
         torque = np.array([torque_x, torque_y, torque_z])
@@ -567,13 +563,13 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
     def plot_results(self):
         steps = min(self.step_counter // self.PYB_STEPS_PER_CTRL, self.max_steps)
-        time_array = np.linspace(0, steps*self.dt, steps+1)
+        time_array = np.linspace(0, steps * self.dt, steps + 1)
 
         fig = plt.figure(figsize=(18, 6))
         ax = fig.add_subplot(131, projection='3d')
-        ax.plot(self.state_history[:steps+1,0],
-                self.state_history[:steps+1,1],
-                self.state_history[:steps+1,2], label='Trajectory')
+        ax.plot(self.state_history[:steps + 1, 0],
+                self.state_history[:steps + 1, 1],
+                self.state_history[:steps + 1, 2], label='Trajectory')
         ax.scatter(self.x_target[0], self.x_target[1], self.x_target[2],
                    color='r', marker='*', s=100, label='Target')
         ax.set_title('Trajectory 3D')
@@ -582,8 +578,8 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         ax.grid(True)
 
         ax2 = fig.add_subplot(132)
-        ax2.plot(self.state_history[:steps+1,0],
-                 self.state_history[:steps+1,1], 'b-', label='XY Path')
+        ax2.plot(self.state_history[:steps + 1, 0],
+                 self.state_history[:steps + 1, 1], 'b-', label='XY Path')
         ax2.plot(self.x_target[0], self.x_target[1], 'ro', label='Target')
         ax2.set_xlabel('X'), ax2.set_ylabel('Y')
         ax2.set_title('Top view')
@@ -592,9 +588,9 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         ax2.legend()
 
         ax3 = fig.add_subplot(133)
-        ax3.plot(time_array, self.state_history[:steps+1,6], label='Roll')
-        ax3.plot(time_array, self.state_history[:steps+1,7], label='Pitch')
-        ax3.plot(time_array, self.state_history[:steps+1,8], label='Yaw')
+        ax3.plot(time_array, self.state_history[:steps + 1, 6], label='Roll')
+        ax3.plot(time_array, self.state_history[:steps + 1, 7], label='Pitch')
+        ax3.plot(time_array, self.state_history[:steps + 1, 8], label='Yaw')
         ax3.set_title('Orientation (rad)')
         ax3.set_xlabel('Time (s)')
         ax3.set_ylabel('Angle (rad)')
@@ -604,18 +600,18 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         plt.show()
 
         # Plot inputs
-        plt.figure(figsize=(14,6))
-        time_ctrl = np.linspace(0, steps*self.dt, steps)
-        plt.subplot(2,1,1)
-        plt.plot(time_ctrl, self.control_history[:steps,0], label='Thrust Z')
+        plt.figure(figsize=(14, 6))
+        time_ctrl = np.linspace(0, steps * self.dt, steps)
+        plt.subplot(2, 1, 1)
+        plt.plot(time_ctrl, self.control_history[:steps, 0], label='Thrust Z')
         plt.title('Control Inputs Over Time')
         plt.legend()
         plt.grid(True)
 
-        plt.subplot(2,1,2)
-        plt.plot(time_ctrl, self.control_history[:steps,1], label='Torque X')
-        plt.plot(time_ctrl, self.control_history[:steps,2], label='Torque Y')
-        plt.plot(time_ctrl, self.control_history[:steps,3], label='Torque Z')
+        plt.subplot(2, 1, 2)
+        plt.plot(time_ctrl, self.control_history[:steps, 1], label='Torque X')
+        plt.plot(time_ctrl, self.control_history[:steps, 2], label='Torque Y')
+        plt.plot(time_ctrl, self.control_history[:steps, 3], label='Torque Z')
         plt.xlabel('Time (s)')
         plt.ylabel('Torque (Nm)')
         plt.legend()
