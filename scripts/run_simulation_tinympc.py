@@ -7,9 +7,11 @@ import matplotlib.pyplot as plt
 import logging
 
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
+from gym_pybullet_drones.envs.VelocityAviary import VelocityAviary
 
 # Import your new environment (make sure the filename matches)
 from environments.custom_aviaries.MPCAviary_tinympc import MPCAviaryStaticTinyMPC
+from environments.factory_environment import create_env
 
 from planners.rrt_star_planner import RRTStarPlanner
 
@@ -66,6 +68,9 @@ if __name__ == "__main__":
     )
 
     obs, info = env.reset()
+    #env, num_steps = create_env(duration_sec=50, simulation_freq_hz=240, control_freq_hz=48, gui=True)
+    #obs, info = env.reset()
+
     start_pos = env.pos[0].copy()
 
     obstacles = []
@@ -88,10 +93,10 @@ if __name__ == "__main__":
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=1000,
-        step_size=0.5,
+        max_iter=10000,
+        step_size=1.0,
         goal_sample_rate=0.1,
-        search_radius=1.0
+        search_radius=0.2
     )
 
     path = planner.plan()
