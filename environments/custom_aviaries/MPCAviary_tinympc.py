@@ -128,8 +128,7 @@ class MPCAviaryStaticTinyMPC(BaseAviary):
             u_min=u_min_f,
             u_max=u_max_f,
             xf_min=None,                       # final-state bounds, if you want
-            xf_max=None,
-            settings=None
+            xf_max=None
         )
 
 
