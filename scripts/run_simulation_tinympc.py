@@ -88,7 +88,7 @@ if __name__ == "__main__":
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=1000,
+        max_iter=2000,
         step_size=0.5,
         goal_sample_rate=0.1,
         search_radius=1.0
