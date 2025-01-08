@@ -12,17 +12,18 @@ def create_box_shape(size, color=[0.6, 0.4, 0.2, 1], client_id=0):
     Returns:
     - obstacle_id: The ID of the created multi-body obstacle.
     """
+    half = [d/2.0 for d in size]
     # Collision box
     collision_shape = p.createCollisionShape(
         shapeType=p.GEOM_BOX,
-        halfExtents=size,
+        halfExtents=half,
         physicsClientId=client_id
     )
     
     # Visual box
     visual_shape = p.createVisualShape(
         shapeType=p.GEOM_BOX,
-        halfExtents=size,
+        halfExtents=half,
         rgbaColor=color,
         physicsClientId=client_id
     )

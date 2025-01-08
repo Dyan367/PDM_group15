@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     mpc_params = {
         'dt': 0.02,
-        'N': 100,
+        'N': 200,
         'sim_time': 5000,
         'proximity_threshold': 0.01
     }
@@ -81,6 +81,8 @@ if __name__ == "__main__":
     y_range = [-arena_size/2, arena_size/2]
     z_range = [0.5, 2.0]
 
+    print(env.obstacles_info)
+
     planner = RRTStarPlannerV2(
         start=start_pos,
         goal=goal_pos,
@@ -88,7 +90,7 @@ if __name__ == "__main__":
         x_range=[-30.0, 30.0],
         y_range=[-30.0, 30.0],
         z_range=z_range,
-        max_iter=1000,
+        max_iter=2000,
         step_size=0.2,
         goal_sample_rate=0.3,
         search_radius=10
@@ -112,7 +114,7 @@ if __name__ == "__main__":
     waypoints = np.array(path)
     waypoint_idx = 0
 
-    waypoint_threshold = 0.3
+    waypoint_threshold = 0.5
 
     env.set_target(waypoint_to_x_target(waypoints[waypoint_idx], start_pos))
 
@@ -136,7 +138,9 @@ if __name__ == "__main__":
         if np.linalg.norm(current_pos - goal_pos) < 0.1:
             print(f"Goal reached! Distance to goal: {np.linalg.norm(current_pos - goal_pos):.4f}")
             break
+        
 
+        print(waypoints[waypoint_idx])
         if terminated or truncated:
             print(f"Episode ended at step {step}")
             break
