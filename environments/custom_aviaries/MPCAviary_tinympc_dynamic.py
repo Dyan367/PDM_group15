@@ -226,189 +226,66 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
         return initial_state, info
 
     def _addObstacles(self):
-        """Add shelves, conveyors, cylinders, crane, and people obstacles.
-        Also store shape info in self.obstacles_info so your planner can see type/dimensions.
-        """
+        alpha = 1
+        height = 2.0
+        width = 0.2
 
-        shelve_size = self.obstacle_config.get('shelve_size', [0.4, 1.5, 4.0])
-        conveyor_size = self.obstacle_config.get('conveyor_size', [0.5, 6, 0.5])
+        # Wall configurations
+        wallx2 = self.obstacle_config.get('wall_x2', [1.4, width, height * 2])
+        wallx5 = self.obstacle_config.get('wall_x5', [2.5, width, height * 2])
+        wallx7 = self.obstacle_config.get('wall_x7', [3.8, width, height * 2])
+        wallx72 = self.obstacle_config.get('wall_x72', [wallx7[0] * 2, width, height * 2])
+        wally2 = self.obstacle_config.get('wall_y2', [width, 1.4, height * 2])
+        wally22 = self.obstacle_config.get('wall_y22', [width, wally2[1] * 2 - width, height * 2])
 
-        # Lists to keep track of PyBullet IDs and moving objects
-        self.obstacle_ids = []
-        self.moving_bodies = []
-        self.people = []
+        # Define wall sizes
+        wall_sizes = {
+            'wall_x2': wallx2,
+            'wall_x5': wallx5,
+            'wall_x7': wallx7,
+            'wall_x72': wallx72,
+            'wall_y2': wally2,
+            'wall_y22': wally22
+        }
 
-        # NEW: A list of dictionaries describing each obstacle's geometry and PyBullet ID
-        self.obstacles_info = []
-
-        ########################
-        # Shelves (rect boxes) #
-        ########################
-        shelve_positions = []
-        for x in [2, 6]:
-            for y in [-5, 0, 5]:
-                shelve_positions.append([x, y, shelve_size[2] / 2])
-
-        for pos in shelve_positions:
-            pillar_id = create_box_shape(
-                size=shelve_size,
-                color=[0.6, 0.4, 0.2, 1],  # Brown box
-                client_id=self.CLIENT
-            )
-            p.resetBasePositionAndOrientation(
-                pillar_id, pos, [0, 0, 0, 1],
-                physicsClientId=self.CLIENT
-            )
-            self.obstacle_ids.append(pillar_id)
-
-            # Store obstacle info
-            self.obstacles_info.append({
-                "type": "box",
-                "position": np.array(pos),
-                "size": np.array(shelve_size),
-                "phys_id": pillar_id
-            })
-
-        #########################
-        # Conveyors (rect box)  #
-        #########################
-        conveyor_positions = [[10, 0, conveyor_size[2] / 2],
-                              [14, 0, conveyor_size[2] / 2]]
-
-        for pos in conveyor_positions:
-            conveyor_id = create_box_shape(
-                size=conveyor_size,
-                color=[0.5, 0.5, 0.5, 1],  # Gray box
-                client_id=self.CLIENT
-            )
-            p.resetBasePositionAndOrientation(
-                conveyor_id, pos, [0, 0, 0, 1],
-                physicsClientId=self.CLIENT
-            )
-            self.obstacle_ids.append(conveyor_id)
-
-            self.obstacles_info.append({
-                "type": "box",
-                "position": np.array(pos),
-                "size": np.array(conveyor_size),
-                "phys_id": conveyor_id
-            })
-
-        #########################
-        # Cylinders on conveyor #
-        #########################
-        num_cylinders = 2
-        cylinder_radius = 0.3
-        cylinder_height = 3.5
-        y_spacing = conveyor_size[1] * 2 / (num_cylinders - 1)
-
-        def add_cylinders(conveyor_pos, y_direction, color):
-            cylinder_bounds = [-np.inf, np.inf,
-                               -conveyor_size[1], conveyor_size[1],
-                               -np.inf, np.inf]
-            reset_position = [
-                conveyor_pos[0],
-                conveyor_pos[1] - y_direction * conveyor_size[1],
-                conveyor_pos[2] + cylinder_height / 2
+        # Define wall positions
+        wall_positions = {
+            'wall_x2': [[wallx2[0] + wallx5[0] * 3 + wallx7[0] - width * 1.5, wally2[1] - width, height]],
+            'wall_x5': [
+                [wallx5[0] / 2, wally2[1] - width, height],
+                [wallx5[0] / 2, -wally2[1] + width, height],
+                [wallx5[0] / 2 + width * 0.5, 3 * (wally2[1] - width), height],
+                [wallx72[0] + wallx2[0] - width, 3 * (wally2[1] - width), height],
+                [wallx5[0] * 2 + wallx7[0] + width / 1.5, -wally2[1] + width, height]
+            ],
+            'wall_x7': [[wallx5[0] * (4 / 3) + wallx7[0] + width / 1.5, -wallx5[0] - wally2[1] + width * 1.5, height]],
+            'wall_x72': [[wallx5[0] - width * 2 + wallx2[0] * 3, 4 * (wallx2[0] - width) + wallx2[0] - width, height]],
+            'wall_y2': [
+                [-wallx5[0] / 2 - width / 2, 0, height],
+                [wallx5[0] * 2 + (-wallx5[0] / 2 - width / 1.5), -wallx5[0] + width / 2, height],
+                [wallx5[0] * 2 + (-wallx5[0] / 2 - width / 1.5) + wallx7[0] * 2, -wallx5[0] + width / 2, height],
+                [wallx5[0] * 2 + (-wallx5[0] / 2 - width / 1.5), wallx5[0] - width / 2, height],
+                [-wallx5[0] / 2 - width / 2, 4 * (wallx2[0] - width), height],
+                [wallx5[0] * 3 + wallx7[0] - width, 2.4, height]
+            ],
+            'wall_y22': [
+                [wallx5[0] * 2 + (-wallx5[0] / 2 - width / 1.5) + wally2[1] * 2, -wally2[1] + wally22[1], height],
+                [wallx2[0] * 2 + wallx5[0] * 3 + wallx7[0] - width * 2, 3 * (wally2[1] - width), height]
             ]
-            velocity = [0.0, y_direction * 10.0, 0.0]
+        }
 
-            for i in range(num_cylinders):
-                cylinder_position = [
-                    conveyor_pos[0],
-                    conveyor_pos[1] - y_direction * (conveyor_size[1] - i * y_spacing),
-                    conveyor_pos[2] + cylinder_height / 2
-                ]
-                cylinder_id = create_cylinder_shape(
-                    radius=cylinder_radius,
-                    height=cylinder_height,
-                    color=color,
+        # Create obstacles
+        self.obstacle_ids = []
+        for wall_name, positions in wall_positions.items():
+            size = wall_sizes[wall_name]
+            for pos in positions:
+                wall_id = create_box_shape(
+                    size=size,
+                    color=[0.6, 0.4, 0.2, alpha],  # Brown box
                     client_id=self.CLIENT
                 )
-                p.resetBasePositionAndOrientation(
-                    cylinder_id, cylinder_position, [0, 0, 0, 1],
-                    physicsClientId=self.CLIENT
-                )
-                self.moving_bodies.append((cylinder_id, *velocity, cylinder_bounds, reset_position))
-                self.obstacle_ids.append(cylinder_id)
-
-                self.obstacles_info.append({
-                    "type": "cylinder",
-                    "position": np.array(cylinder_position),
-                    "radius": cylinder_radius,
-                    "height": cylinder_height,
-                    "phys_id": cylinder_id
-                })
-
-        # Add cylinders (blue / green)
-        add_cylinders([10, 0, conveyor_size[2] / 2], 1, [0, 0, 1, 1])  # Blue cylinders
-        add_cylinders([14, 0, conveyor_size[2] / 2], -1, [0, 1, 0, 1])  # Green cylinders
-
-        ###################
-        # Crane (rect box) #
-        ###################
-        crane_size = [0.4, conveyor_size[1], 0.8]
-        self.crane = create_box_shape(
-            size=crane_size,
-            color=[1.0, 0.0, 0.0, 1],  # Red box
-            client_id=self.CLIENT
-        )
-        p.resetBasePositionAndOrientation(
-            self.crane,
-            [10, 0, 5.0],
-            [0, 0, 0, 1],
-            physicsClientId=self.CLIENT
-        )
-        self.crane_bounds = [9, 15, -2, 2, 2.5, 3.5]
-        self.crane_velocity_x = self.crane_velocity
-        self.obstacle_ids.append(self.crane)
-
-        self.obstacles_info.append({
-            "type": "box",
-            "position": np.array([10, 0, 5.0]),
-            "size": np.array(crane_size),
-            "phys_id": self.crane
-        })
-
-        #################################
-        # Moving People (rect box shape) #
-        #################################
-        num_people = 1
-        person_size = [0.4, 0.4, 3]
-        person_bounds = [18, 28, -6, 6, 0, person_size[2] * 2]
-        add_bounding_box(person_bounds, client_id=0)  # not an obstacle, just visual
-        max_speed = 10.0
-        change_interval = 2.0
-
-        for i in range(num_people):
-            person_position = [
-                np.random.uniform(person_bounds[0], person_bounds[1]),
-                np.random.uniform(person_bounds[2], person_bounds[3]),
-                person_size[2]
-            ]
-            person_id = create_box_shape(
-                size=person_size,
-                color=[1, 0.75, 0.8, 1],  # Pink box
-                client_id=self.CLIENT
-            )
-            p.resetBasePositionAndOrientation(
-                person_id, person_position, [0, 0, 0, 1],
-                physicsClientId=self.CLIENT
-            )
-            self.people.append({
-                "id": person_id,
-                "bounds": person_bounds,
-                "max_speed": max_speed,
-                "change_interval": change_interval
-            })
-            self.obstacle_ids.append(person_id)
-
-            self.obstacles_info.append({
-                "type": "box",
-                "position": np.array(person_position),
-                "size": np.array(person_size),
-                "phys_id": person_id
-            })
+                p.resetBasePositionAndOrientation(wall_id, pos, [0, 0, 0, 1], physicsClientId=self.CLIENT)
+                self.obstacle_ids.append(wall_id)
 
     def step(self, action=None):
 

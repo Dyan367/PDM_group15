@@ -10,23 +10,21 @@ class Node:
         self.cost = 0.0
 
 class RRTStarPlannerV2:
-    def __init__(self, start, goal, obstacles_info,
-                 x_range, y_range, z_range,
-                 max_iter=3000, step_size=0.3,
-                 goal_sample_rate=0.2, search_radius=2.0,
-                 collision_subsamples=50):
-        """
-        :param obstacles_info: A list of dicts describing each obstacle:
-            e.g. [
-              {"type": "box", "position": np.array([x,y,z]), "size": np.array([sx,sy,sz]), "phys_id": ...},
-              {"type": "cylinder", "position": ..., "radius": ..., "height": ..., "phys_id": ...},
-              ...
-            ]
-        :param collision_subsamples: how many points to sample along each new edge.
-        """
+    def __init__(self, 
+                 start, 
+                 goal, 
+                 bvh_tree,
+                 x_range, 
+                 y_range, 
+                 z_range,
+                 max_iter=3000, 
+                 step_size=0.3,
+                 goal_sample_rate=0.2, 
+                 search_radius=2.0):
+        
         self.start = Node(start)
         self.goal = Node(goal)
-        self.obstacles_info = obstacles_info  # The new list from your environment
+        self.bvh_tree = bvh_tree  # BVH tree for efficient collision checks
 
         self.x_range = x_range
         self.y_range = y_range
@@ -36,7 +34,7 @@ class RRTStarPlannerV2:
         self.step_size = step_size
         self.goal_sample_rate = goal_sample_rate
         self.search_radius = search_radius
-        self.collision_subsamples = collision_subsamples
+        
 
         self.node_list = [self.start]
         self.edge_list = []
@@ -47,7 +45,7 @@ class RRTStarPlannerV2:
             nearest_node = self.get_nearest_node(rnd_point)
             new_node = self.steer(nearest_node, rnd_point)
 
-            # Check collision (including sub-sampling) 
+            # Check collision for the line segment
             if self.check_collision(nearest_node.position, new_node.position):
                 near_nodes = self.find_near_nodes(new_node)
                 new_node = self.choose_parent(new_node, near_nodes)
@@ -64,7 +62,7 @@ class RRTStarPlannerV2:
                     self.node_list.append(self.goal)
                     return self.extract_path()
 
-        # If we reach max_iter without connecting to goal
+        # If we reach max_iter without connecting to the goal
         return None
 
     def sample(self):
@@ -96,55 +94,61 @@ class RRTStarPlannerV2:
         return new_node
 
     def check_collision(self, p1, p2):
-        """Check for collision by sub-sampling the line from p1->p2."""
-        for alpha in np.linspace(0, 1, self.collision_subsamples):
-            pt = p1 + alpha*(p2 - p1)
-            # Check if this pt is inside any obstacle
-            for obs in self.obstacles_info:
-                if self.point_in_obstacle(pt, obs):
+        """
+        Check if the line from p1 to p2 intersects any obstacle using the BVH tree.
+        """
+        return not self.check_line_intersection_with_bvh(p1, p2, self.bvh_tree)
+
+    def check_line_intersection_with_bvh(self, p1, p2, node):
+        """
+        Recursively checks if the line segment from p1 to p2 intersects any obstacle in the BVH tree.
+        """
+        if node is None:
+            return False
+
+        # Check if the line segment intersects the current node's AABB
+        aabb = node.aabb
+        if not self.line_intersects_aabb(p1, p2, aabb):
+            return False
+
+        # If this is a leaf node, check the line against its objects
+        if node.objects is not None:
+            for obs in node.objects:
+                if self.line_intersects_aabb(p1, p2, obs):
+                    return True
+            return False
+
+        # Otherwise, check the children
+        return (self.check_line_intersection_with_bvh(p1, p2, node.left) or
+                self.check_line_intersection_with_bvh(p1, p2, node.right))
+
+    def line_intersects_aabb(self, p1, p2, aabb):
+        """
+        Checks if a line segment intersects an AABB using the slab method.
+        """
+        aabb_min = aabb['aabb_min']
+        aabb_max = aabb['aabb_max']
+
+        tmin, tmax = 0.0, 1.0  # Normalized segment parameters
+        for i in range(3):  # For x, y, z axes
+            if abs(p2[i] - p1[i]) < 1e-6:  # Parallel to the slab
+                if p1[i] < aabb_min[i] or p1[i] > aabb_max[i]:
+                    return False
+            else:
+                inv_d = 1.0 / (p2[i] - p1[i])
+                t1 = (aabb_min[i] - p1[i]) * inv_d
+                t2 = (aabb_max[i] - p1[i]) * inv_d
+                if t1 > t2:  # Swap if t1 > t2
+                    t1, t2 = t2, t1
+                tmin = max(tmin, t1)
+                tmax = min(tmax, t2)
+                if tmin > tmax:
                     return False
         return True
 
-    def point_in_obstacle(self, pt, obs):
-        """Returns True if 'pt' is inside the given obstacle dict from obstacles_info."""
-        obs_type = obs["type"]
-        center   = obs["position"]
-
-        if obs_type == "box":
-            # For axis-aligned box: check if pt is within [center - size/2, center + size/2]
-            size = obs["size"]  # e.g. [sx, sy, sz]
-            half = 2*size / 2.0
-            if (center[0] - half[0] <= pt[0] <= center[0] + half[0] and
-                center[1] - half[1] <= pt[1] <= center[1] + half[1] and
-                center[2] - half[2] <= pt[2] <= center[2] + half[2]):
-                return True
-            return False
-
-        elif obs_type == "cylinder":
-            # Cylinder aligned along Z-axis
-            radius = obs["radius"]
-            height = obs["height"]
-            dist_xy = np.linalg.norm(pt[:2] - center[:2])
-            z_min = center[2] - height/2.0
-            z_max = center[2] + height/2.0
-            if dist_xy <= radius and z_min <= pt[2] <= z_max:
-                return True
-            return False
-
-        elif obs_type == "sphere":
-            # If you have spherical obstacles
-            r = obs["radius"]
-            dist_to_center = np.linalg.norm(pt - center)
-            return (dist_to_center <= r)
-
-        else:
-            # If an unknown shape, treat it as no collision
-            return False
-
     def find_near_nodes(self, new_node):
         n = len(self.node_list)
-        # Typical RRT* radius factor
-        r = self.search_radius * np.sqrt((np.log(n) / n)) if n>1 else self.search_radius
+        r = self.search_radius * np.sqrt((np.log(n) / n)) if n > 1 else self.search_radius
         dists = [np.linalg.norm(n.position - new_node.position) for n in self.node_list]
         near_nodes = [self.node_list[i] for i in range(len(self.node_list)) if dists[i] <= r]
         return near_nodes
@@ -169,10 +173,8 @@ class RRTStarPlannerV2:
             if self.check_collision(new_node.position, near_node.position):
                 cost = new_node.cost + np.linalg.norm(new_node.position - near_node.position)
                 if cost < near_node.cost:
-                    # Remove old edge
                     if near_node.parent is not None:
                         self.edge_list.remove((near_node.parent, near_node))
-                    # Rewire
                     near_node.parent = new_node
                     near_node.cost = cost
                     self.edge_list.append((new_node, near_node))
@@ -186,19 +188,16 @@ class RRTStarPlannerV2:
         path.reverse()
         return path
 
-    #### For Debugging / Visualization ####
     def draw_tree(self, show=True):
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
-        # Edges
         for (parent, child) in self.edge_list:
             x_vals = [parent.position[0], child.position[0]]
             y_vals = [parent.position[1], child.position[1]]
             z_vals = [parent.position[2], child.position[2]]
             ax.plot(x_vals, y_vals, z_vals, 'b-', linewidth=0.5)
 
-        # Start + Goal
         ax.scatter(self.start.position[0], self.start.position[1], self.start.position[2],
                    color='green', marker='o', s=100, label='Start')
         ax.scatter(self.goal.position[0], self.goal.position[1], self.goal.position[2],
@@ -210,7 +209,6 @@ class RRTStarPlannerV2:
         ax.set_title('RRT* Tree')
         ax.legend()
 
-        # Match aspect ratio to search range
         ax.set_box_aspect([
             (self.x_range[1]-self.x_range[0]),
             (self.y_range[1]-self.y_range[0]),
