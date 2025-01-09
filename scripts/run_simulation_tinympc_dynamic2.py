@@ -62,8 +62,8 @@ if __name__ == "__main__":
         'proximity_threshold': 0.01
     }
 
-    start_pos = np.array([0.0, 0.0, 1.0])
-    goal_pos = np.array([8, 8, 1])
+    start_pos = np.array([0.0, 0.0, 0.3])
+    goal_pos = np.array([6.5, 6.5, 5.5])
 
     env = MPCAviaryDynamicTinyMPC(
         drone_model=DroneModel.CF2X,
@@ -125,7 +125,7 @@ if __name__ == "__main__":
         visual_shape_id = p.createVisualShape(
             shapeType=p.GEOM_BOX,
             halfExtents=extent,
-            rgbaColor=[1, 0, 0, 0.3],  # Green color with 30% opacity
+            rgbaColor=[1, 0, 0, 0.05],  # Green color with 30% opacity
             physicsClientId=env.CLIENT
         )
 
@@ -139,15 +139,17 @@ if __name__ == "__main__":
     bvh_tree = build_bvh(aabbs)
 
     arena_size = env.obstacle_config['environment_width']  # Updated to match new obstacle config
-    x_range = [-arena_size / 2, arena_size / 2]
-    y_range = [-arena_size / 2, arena_size / 2]
-    z_range = [0.5, 2.0]
+    # x_range = [-arena_size / 2, arena_size / 2]
+    # y_range = [-arena_size / 2, arena_size / 2]
+    x_range = [0.1, 8.0]
+    y_range = [0.1, 8.0]
+    z_range = [0.1, 8.0]
 
     goal_sphere_radius = 0.2  # Radius of the sphere
     visual_shape_id = p.createVisualShape(
         shapeType=p.GEOM_SPHERE,
         radius=goal_sphere_radius,
-        rgbaColor=[0, 0, 0, 1],  # White color
+        rgbaColor=[0, 0, 0, 1],
         physicsClientId=env.CLIENT
     )
 
@@ -161,12 +163,12 @@ if __name__ == "__main__":
         start=start_pos,
         goal=goal_pos,
         bvh_tree=bvh_tree,
-        x_range=[-1.0, 8.0],
-        y_range=[-1.0, 8.0],
+        x_range=x_range,
+        y_range=y_range,
         z_range=z_range,
-        max_iter=2500,
+        max_iter=100000,
         step_size=0.2,
-        goal_sample_rate=0.3,
+        goal_sample_rate=0.2,
         search_radius=1.0
     )
 
@@ -223,11 +225,11 @@ if __name__ == "__main__":
         # Dynamically find the closest waypoint (for debugging or visualization)
         closest_idx = find_closest_waypoint(current_pos, waypoints)
 
-        # Draw a red line to the closest waypoint
+        # Draw a blue line to the closest waypoint
         p.addUserDebugLine(
             lineFromXYZ=current_pos,
             lineToXYZ=waypoints[closest_idx],
-            lineColorRGB=[0, 0, 1],  # Red color
+            lineColorRGB=[0, 0, 1],  # blue color
             lifeTime=0.02,
             physicsClientId=env.CLIENT
         )
