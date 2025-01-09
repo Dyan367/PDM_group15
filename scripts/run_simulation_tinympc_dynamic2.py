@@ -63,7 +63,7 @@ if __name__ == "__main__":
     }
 
     start_pos = np.array([0.0, 0.0, 1.0])
-    goal_pos = np.array([1, 1, 1])
+    goal_pos = np.array([8, 8, 1])
 
     env = MPCAviaryDynamicTinyMPC(
         drone_model=DroneModel.CF2X,
@@ -143,12 +143,26 @@ if __name__ == "__main__":
     y_range = [-arena_size / 2, arena_size / 2]
     z_range = [0.5, 2.0]
 
+    goal_sphere_radius = 0.2  # Radius of the sphere
+    visual_shape_id = p.createVisualShape(
+        shapeType=p.GEOM_SPHERE,
+        radius=goal_sphere_radius,
+        rgbaColor=[0, 0, 0, 1],  # White color
+        physicsClientId=env.CLIENT
+    )
+
+    p.createMultiBody(
+        baseVisualShapeIndex=visual_shape_id,
+        basePosition=goal_pos.tolist(),  # Position the sphere at the goal position
+        physicsClientId=env.CLIENT
+    )
+
     planner = RRTStarPlannerV2(
         start=start_pos,
         goal=goal_pos,
         bvh_tree=bvh_tree,
-        x_range=[-30.0, 30.0],
-        y_range=[-30.0, 30.0],
+        x_range=[-1.0, 8.0],
+        y_range=[-1.0, 8.0],
         z_range=z_range,
         max_iter=2500,
         step_size=0.2,

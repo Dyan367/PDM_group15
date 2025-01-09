@@ -1,6 +1,6 @@
 import pybullet as p
 
-def create_box_shape(size, color=[0.6, 0.4, 0.2, 1], client_id=0):
+def create_box_shape(size, color=[0.6, 0.4, 0.2, 1.0], client_id=0):
     """
     Parameters:
     - size: A list or array [x_half, y_half, z_half] representing half-extents of the box.
