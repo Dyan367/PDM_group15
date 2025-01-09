@@ -224,111 +224,355 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
         return initial_state, info
 
-    def _create_environment(self, environment_grid, wall_thickness=0.2, wall_height=2.0, floor=True, grid_size=10.0):
+    def _create_environment(self, environment_grid, cell_size=1.0, wall_thickness=0.2, wall_height=2.0):
         """
-        Creates an environment based on a grid system, where each cell in the grid represents a different object.
+        Creates an environment based on a 3D grid with optimization for continuous lines.
 
         Parameters:
-        - environment_grid (list of list of int): A 2D grid representing the environment layout.
-        - wall_thickness (float): Thickness of the walls.
-        - wall_height (float): Height of the walls.
-        - floor (bool): Whether to include a floor in the environment.
-        - grid_size (float): The size of each grid cell.
+        - environment_grid: 3D grid representing obstacles at different heights.
+        - cell_size: The size of each cell in the grid.
+        - wall_thickness: Thickness of the walls/obstacles.
+        - wall_height: Height of the walls/obstacles.
         """
-        alpha = 0.8  # Transparency for the walls and floor
-        rows = len(environment_grid)  # Number of rows in the grid
-        cols = len(environment_grid[0])  # Number of columns in the grid
+        self.obstacle_ids = []
+        alpha = 1.0  # Full opacity for obstacles
 
-        # Add floor if needed
-        if floor:
-            floor_size = [cols * grid_size / 2, rows * grid_size / 2, wall_thickness / 2]
-            floor_position = [0, 0, -wall_thickness / 2]
-            floor_id = create_box_shape(
-                size=floor_size,
-                color=[0.5, 0.5, 0.5, alpha],  # Gray floor
-                client_id=self.CLIENT
-            )
-            p.resetBasePositionAndOrientation(floor_id, floor_position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
-            self.obstacle_ids.append(floor_id)
+        for z, layer in enumerate(environment_grid):
+            if not isinstance(layer, list):
+                raise TypeError(f"Expected layer to be a list, got {type(layer)}")
 
-        # Loop through the grid and place walls or obstacles
-        for i in range(rows):
-            for j in range(cols):
-                grid_value = environment_grid[i][j]
+            rows = len(layer)
+            cols = len(layer[0])  # Ensure each row is a list
 
-                # Calculate the position of each element based on the grid
-                position = [(j - cols / 2) * grid_size, (i - rows / 2) * grid_size, wall_height / 2]
+            for row in range(rows):
+                start_col = None
+                current_type = None
 
-                if grid_value == 1:
-                    # Place a wall
-                    wall_size = [wall_thickness/2, grid_size/2, wall_height]  # Wall dimensions
-                    wall_id = create_box_shape(
-                        size=wall_size,
-                        color=[0.6, 0.4, 0.2, alpha],  # Brown walls
-                        client_id=self.CLIENT
+                for col in range(cols):
+                    cell = layer[row][col]
+
+                    # Check if we need to start a new line
+                    if cell != current_type:
+                        if current_type is not None and current_type != 0:
+                            # End the previous line
+                            self._create_line(
+                                row=row, start_col=start_col, end_col=col - 1,
+                                z=z, cell_type=current_type, cell_size=cell_size,
+                                wall_thickness=wall_thickness, wall_height=wall_height
+                            )
+                        # Start a new line
+                        current_type = cell
+                        start_col = col
+
+                # Handle the last line in the row
+                if current_type is not None and current_type != 0:
+                    self._create_line(
+                        row=row, start_col=start_col, end_col=cols - 1,
+                        z=z, cell_type=current_type, cell_size=cell_size,
+                        wall_thickness=wall_thickness, wall_height=wall_height
                     )
-                    p.resetBasePositionAndOrientation(wall_id, position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
-                    self.obstacle_ids.append(wall_id)
 
-                elif grid_value == 2:
-                # Place an obstacle (lifted higher on the Z-axis)
-                # Apply a custom offset to the Z-coordinate for obstacles
-                    obstacle_position = [position[0], position[1], position[2] - 1 ]  # drop the obstacle
+        print(f"Environment created with {len(self.obstacle_ids)} obstacles.")
 
-                    obstacle_size = [grid_size / 2, grid_size / 2, wall_height / 8]
-                    obstacle_id = create_box_shape(
-                        size=obstacle_size,
-                        color=[0.6, 0.4, 0.2, alpha],  # Brown walls
-                        client_id=self.CLIENT
-                    )
-                    p.resetBasePositionAndOrientation(obstacle_id, obstacle_position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
-                    self.obstacle_ids.append(obstacle_id)
+    def _create_line(self, row, start_col, end_col, z, cell_type, cell_size, wall_thickness, wall_height):
+        """
+        Creates a single box for a continuous line of cells.
 
-                elif grid_value == 3:
-                    # Place an obstacle (lifted higher on the Z-axis)
-                    # Apply a custom offset to the Z-coordinate for obstacles
-                    obstacle_position = [position[0], position[1], position[2] + 1]  # Lift the obstacle
+        Parameters:
+        - row: The row index of the line.
+        - start_col: The starting column index of the line.
+        - end_col: The ending column index of the line.
+        - z: The height layer index.
+        - cell_type: The type of the cell (e.g., 1, 2, 3).
+        - cell_size: The size of each cell.
+        - wall_thickness: Thickness of the walls/obstacles.
+        - wall_height: Height of the walls/obstacles.
+        """
+        length = (end_col - start_col + 1) * cell_size  # Total length of the line
+        x_center = (start_col + end_col) / 2 * cell_size  # X-coordinate of the center
+        y_center = row * cell_size  # Y-coordinate of the row
+        z_center = z * cell_size + wall_height / 2  # Z-coordinate for the height
 
-                    obstacle_size = [grid_size / 2, grid_size / 2, wall_height / 8]
-                    obstacle_id = create_box_shape(
-                        size=obstacle_size,
-                        color=[0.6, 0.4, 0.2, alpha],  # Brown walls
-                        client_id=self.CLIENT
-                    )
-                    p.resetBasePositionAndOrientation(obstacle_id, obstacle_position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
-                    self.obstacle_ids.append(obstacle_id)
+        # Define box dimensions and color based on cell type
+        size = [length / 2, cell_size / 2, wall_thickness / 2]
+        color = [0.6, 0.4, 0.2, 1.0]  # Default color
+
+        if cell_type == 1:  # Thin walls with configurable height
+            size[2] = wall_height / 2
+        elif cell_type == 2:  # Regular cubes
+            size = [cell_size / 2, cell_size / 2, cell_size / 2]
+            color = [0.2, 0.6, 0.8, 1.0]
+        elif cell_type == 3:  # Tall obstacles
+            size = [cell_size / 2, cell_size / 2, wall_height]
+            color = [0.8, 0.2, 0.2, 1.0]
+
+        # Create the combined box
+        obstacle_id = create_box_shape(size=size, color=color, client_id=self.CLIENT)
+        p.resetBasePositionAndOrientation(
+            obstacle_id, [x_center, y_center, z_center], [0, 0, 0, 1], physicsClientId=self.CLIENT
+        )
+        self.obstacle_ids.append(obstacle_id)
+
+    # def _create_environment(self, environment_grid, grid_size=1.0, wall_thickness=0.2, wall_height=1.0):
+    #     """
+    #     Creates an environment using a 3D grid where each layer corresponds to a z-coordinate.
+    #
+    #     Parameters:
+    #     - environment_grid (list of list of list of int): A 3D grid representing the environment layout.
+    #     - grid_size (float): Size of each grid cell (X, Y dimensions).
+    #     - wall_thickness (float): Thickness of walls.
+    #     - wall_height (float): Height of each grid layer (Z dimension).
+    #     """
+    #     alpha = 0.8  # Transparency for walls and obstacles
+    #
+    #     # Loop through each layer (z-level)
+    #     for z_index, layer in enumerate(environment_grid):
+    #         rows = len(layer)
+    #         cols = len(layer[0])
+    #
+    #         for i in range(rows):
+    #             for j in range(cols):
+    #                 grid_value = layer[i][j]
+    #
+    #                 # Calculate the position for the obstacle
+    #                 position = [
+    #                     (j - cols / 2) * grid_size,  # X-position
+    #                     (i - rows / 2) * grid_size,  # Y-position
+    #                     z_index * wall_height + wall_height / 2  # Z-position (layer height)
+    #                 ]
+    #
+    #                 if grid_value == 1:
+    #                     # Create a wall
+    #                     wall_size = [grid_size / 2, grid_size / 2, wall_height / 2]
+    #                     wall_id = create_box_shape(
+    #                         size=wall_size,
+    #                         color=[0.6, 0.4, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(wall_id, position, [0, 0, 0, 1], physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(wall_id)
+    #
+    #
+    #                 # y_direction tube (column direction)
+    #                 elif grid_value == 2:
+    #                     # Create a multi-floor obstacle
+    #                     obstacle_size = [grid_size / 2, grid_size / 2, wall_height / 8]
+    #
+    #                     # First floor
+    #                     first_floor_position = [position[0], position[1], position[2] - wall_height / 2]
+    #                     first_floor_id = create_box_shape(
+    #                         size=obstacle_size,
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(first_floor_id, first_floor_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(first_floor_id)
+    #
+    #                     # Second floor (above the first floor)
+    #                     second_floor_position = [position[0], position[1], position[2] + wall_height / 2]
+    #                     second_floor_id = create_box_shape(
+    #                         size=obstacle_size,
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(second_floor_id, second_floor_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(second_floor_id)
+    #
+    #                     # walls
+    #                     first_wall_position = [position[0] + grid_size / 2, position[1], position[2]]
+    #                     first_wall_id = create_box_shape(
+    #                         size=[grid_size / 8, grid_size / 2, wall_height / 2],
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(first_wall_id, first_wall_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(first_wall_id)
+    #
+    #                     # walls
+    #                     second_wall_position = [position[0] - grid_size / 2, position[1], position[2]]
+    #                     second_wall_id = create_box_shape(
+    #                         size=[grid_size / 8, grid_size / 2, wall_height / 2],
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(second_wall_id, second_wall_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(second_wall_id)
+    #
+    #                 # x-direction tube (ROW direction)
+    #                 elif grid_value == 3:
+    #                     # Create a multi-floor obstacle
+    #                     obstacle_size = [grid_size / 2, grid_size / 2, wall_height / 8]
+    #
+    #                     # First floor
+    #                     first_floor_position = [position[0], position[1], position[2] - wall_height/2]
+    #                     first_floor_id = create_box_shape(
+    #                         size=obstacle_size,
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(first_floor_id, first_floor_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(first_floor_id)
+    #
+    #                     # Second floor (above the first floor)
+    #                     second_floor_position = [position[0], position[1], position[2] + wall_height/2]
+    #                     second_floor_id = create_box_shape(
+    #                         size=obstacle_size,
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(second_floor_id, second_floor_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(second_floor_id)
+    #
+    #                     # walls
+    #                     first_wall_position = [position[0], position[1]+grid_size/2, position[2]]
+    #                     first_wall_id = create_box_shape(
+    #                         size=[grid_size/2, grid_size / 8, wall_height/2],
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(first_wall_id, first_wall_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(first_wall_id)
+    #
+    #                     # walls
+    #                     second_wall_position = [position[0], position[1] - grid_size / 2, position[2]]
+    #                     second_wall_id = create_box_shape(
+    #                         size=[grid_size/2, grid_size/8, wall_height/2],
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(second_wall_id, second_wall_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(second_wall_id)
+    #
+    #                     # four way crossing
+    #                 elif grid_value == 4:
+    #                     # Create a multi-floor obstacle
+    #                     obstacle_size = [grid_size / 2, grid_size / 2, wall_height / 8]
+    #
+    #                     # First floor
+    #                     first_floor_position = [position[0], position[1], position[2] - wall_height / 2]
+    #                     first_floor_id = create_box_shape(
+    #                         size=obstacle_size,
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(first_floor_id, first_floor_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(first_floor_id)
+    #
+    #                     # Second floor (above the first floor)
+    #                     second_floor_position = [position[0], position[1], position[2] + wall_height / 2]
+    #                     second_floor_id = create_box_shape(
+    #                         size=obstacle_size,
+    #                         color=[0.8, 0.2, 0.2, alpha],
+    #                         client_id=self.CLIENT
+    #                     )
+    #                     p.resetBasePositionAndOrientation(second_floor_id, second_floor_position, [0, 0, 0, 1],
+    #                                                       physicsClientId=self.CLIENT)
+    #                     self.obstacle_ids.append(second_floor_id)
 
     def _addObstacles(self):
         """
         Overrides the `_addObstacles` method to create an environment based on a grid layout.
+        Combines adjacent cubes into larger rectangular cuboids when possible.
         """
         self.obstacle_ids = []
 
         # Define the environment grid
         environment_grid = [
-            [1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 0, 0, 3, 1],
-            [1, 0, 3, 0, 0, 0, 3, 1],
-            [1, 0, 3, 0, 0, 2, 3, 1],
-            [1, 0, 3, 0, 0, 1, 3, 1],
-            [1, 0, 3, 0, 0, 1, 3, 1],
-            [1, 0, 3, 0, 0, 1, 3, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1]
+            # LAYER 1
+            [
+                [0, 0, 1, 1, 1, 1, 1, 1],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 1, 0, 0, 1, 0, 0],
+                [1, 0, 1, 0, 0, 1, 0, 0],
+                [1, 0, 0, 0, 0, 1, 0, 0]
+            ],
+            # LAYER 2
+            [
+                [0, 0, 1, 1, 1, 1, 1, 1],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 1, 0, 0, 1, 0, 0],
+                [1, 0, 1, 0, 0, 1, 0, 0],
+                [1, 0, 0, 0, 0, 1, 0, 0]
+            ]
+            # END
         ]
 
         wall_thickness = self.obstacle_config.get('wall_thickness', 1.0)
         wall_height = self.obstacle_config.get('wall_height', 2.0)
-        include_floor = self.obstacle_config.get('include_floor', True)
-        grid_size = self.obstacle_config.get('grid_size', 1.0)  # Grid size for the walls
 
         # Create the environment based on the grid
         self._create_environment(
             environment_grid=environment_grid,
             wall_thickness=wall_thickness,
-            wall_height=wall_height,
-            floor=include_floor,
-            grid_size=grid_size
+            wall_height=wall_height
         )
+
+        # Combine horizontally adjacent obstacles (in the X direction) across layers
+        for z_index, layer in enumerate(environment_grid):
+            rows = len(layer)
+            cols = len(layer[0])
+
+            for i in range(rows):
+                start_col = None
+                for j in range(cols):
+                    if layer[i][j] == 1:
+                        if start_col is None:
+                            start_col = j  # Mark the start of a continuous line
+                    else:
+                        if start_col is not None:
+                            # A line has ended, create the combined box
+                            end_col = j - 1
+                            self._create_line(i, start_col, end_col, z_index, 1, 1.0, wall_thickness, wall_height)
+                            start_col = None
+
+                # Handle the last line if it reaches the end of the row
+                if start_col is not None:
+                    self._create_line(i, start_col, cols - 1, z_index, 1, 1.0, wall_thickness, wall_height)
+
+            # Combine vertically adjacent obstacles (in the Y direction)
+            for j in range(cols):
+                start_row = None
+                for i in range(rows):
+                    if layer[i][j] == 1:
+                        if start_row is None:
+                            start_row = i  # Mark the start of a vertical line
+                    else:
+                        if start_row is not None:
+                            # A vertical line has ended, create the combined box
+                            end_row = i - 1
+                            self._create_line(start_row, j, j, z_index, 1, 1.0, wall_thickness, wall_height)
+                            start_row = None
+
+                # Handle the last line if it reaches the end of the column
+                if start_row is not None:
+                    self._create_line(start_row, j, rows - 1, z_index, 1, 1.0, wall_thickness, wall_height)
+
+            # Combine obstacles vertically across layers (in the Z direction)
+            for i in range(rows):
+                for j in range(cols):
+                    if layer[i][j] == 1:
+                        z_start = z_index
+                        # Check if there are continuous obstacles in the Z direction
+                        while z_start + 1 < len(environment_grid) and environment_grid[z_start + 1][i][j] == 1:
+                            z_start += 1
+                        z_end = z_start
+                        self._create_line(i, j, j, z_index, 1, 1.0, wall_thickness, wall_height)
+                        z_index = z_end  # Correct the Z index here
 
     def step(self, action=None):
 

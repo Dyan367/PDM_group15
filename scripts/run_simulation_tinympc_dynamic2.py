@@ -14,6 +14,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from environments.custom_aviaries.MPCAviary_tinympc_dynamic2 import MPCAviaryDynamicTinyMPC
+#from environments.custom_aviaries.MPCAviary_tinympc_dynamic3 import MPCAviaryDynamicTinyMPC
 
 from planners.rrt_star_plannerV2 import RRTStarPlannerV2
 from planners.bvh_tree import build_bvh
@@ -85,8 +86,8 @@ if __name__ == "__main__":
             'environment_width': 10.0,
             'environment_height': 10.0,
             'wall_thickness': 1.0,
-            'wall_height': 2.0,
-            'include_floor': True
+            'wall_height': 1.0,
+            'cell_size':1.0
         },
         seed=42
     )
