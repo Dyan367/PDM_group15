@@ -57,7 +57,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
                          ctrl_freq=ctrl_freq,
                          gui=gui,
                          record=record,
-                         obstacles=obstacles,
+                         obstacles=False,
                          user_debug_gui=user_debug_gui,
                          vision_attributes=vision_attributes,
                          output_folder=output_folder)
