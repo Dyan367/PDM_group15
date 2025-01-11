@@ -602,8 +602,8 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
         # Apply
         thrust_z, torque_x, torque_y, torque_z = u_opt
-        print(
-            f"Time {t * self.dt:.1f}s - Control: Tz={thrust_z:.2f}, Tx={torque_x:.2f}, Ty={torque_y:.2f}, Tz={torque_z:.2f}")
+        # print(
+        #     f"Time {t * self.dt:.1f}s - Control: Tz={thrust_z:.2f}, Tx={torque_x:.2f}, Ty={torque_y:.2f}, Tz={torque_z:.2f}")
         self._apply_control_inputs(thrust_z, torque_x, torque_y, torque_z)
 
         # for _ in range(self.PYB_STEPS_PER_CTRL):
@@ -668,6 +668,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
             torqueObj=torque.tolist(),
             flags=p.LINK_FRAME
         )
+    
 
     def close(self):
         if hasattr(self, 'obstacle_ids') and self.obstacle_ids:

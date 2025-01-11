@@ -144,6 +144,11 @@ def main():
     for i in range(num_steps):
         start_time = time.time()
 
+        for obs_id in env.obstacle_ids:
+            contact_points = p.getContactPoints(bodyA=env.DRONE_IDS[0], bodyB=obs_id)
+            if contact_points:
+                print(f"Collision detected with obstacle ID {obs_id}")
+
         current_pos = obs[0][0:3]
         if waypoint_idx < len(waypoints):
             target_pos = waypoints[waypoint_idx]
@@ -176,7 +181,7 @@ def main():
         )
 
 
-        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        #print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
 
         if terminated or truncated:
