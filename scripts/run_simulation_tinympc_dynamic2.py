@@ -206,6 +206,10 @@ if __name__ == "__main__":
     for step in range(total_steps):
         # Step the environment (action can be passed if needed)
         obs, reward, terminated, truncated, info = env.step(action)
+        for obs_id in env.obstacle_ids:
+            contact_points = p.getContactPoints(bodyA=env.DRONE_IDS[0], bodyB=obs_id)
+            if contact_points:
+                print(f"Collision detected with obstacle ID {obs_id}")
 
         # Get the drone's current position
         current_pos = obs[:3]
@@ -240,7 +244,7 @@ if __name__ == "__main__":
             break
 
         # Log progress
-        print(f"Step {step}, Position: {current_pos}, Current Target: {waypoints[waypoint_idx]}")
+        #print(f"Step {step}, Position: {current_pos}, Current Target: {waypoints[waypoint_idx]}")
 
         # Handle termination or truncation
         if terminated or truncated:

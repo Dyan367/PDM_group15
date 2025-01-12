@@ -7,9 +7,10 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from environments.custom_aviaries.static_factory_aviary import StaticFactory
-from planners.rrt_star_planner import RRTStarPlanner
+from planners.rrt_star_plannerV2 import RRTStarPlannerV2
 from gym_pybullet_drones.utils.enums import DroneModel, Physics
 from gym_pybullet_drones.utils.Logger import Logger
+from planners.bvh_tree import build_bvh
 
 
 def main():
@@ -39,42 +40,80 @@ def main():
             'wall_height': 1.0,
             'cell_size':1.0
         },
-        seed=40
+        seed=42
     )
     obs, info = env.reset()
 
     logger = Logger(logging_freq_hz=control_freq_hz, num_drones=1)
 
     start_pos = env.pos[0]
-    goal_pos = np.array([5.0, 5.0, 1.0])
+    goal_pos = np.array([6.5, 6.5, 5.5])
 
 
 
-    obstacles = []
+    aabbs = []
+    dilation = 0.1  # Dilation amount
+
     for obs_id in env.obstacle_ids:
-        pos, _ = p.getBasePositionAndOrientation(obs_id, physicsClientId=env.CLIENT)
-        size = p.getVisualShapeData(obs_id, physicsClientId=env.CLIENT)[0][3]  
-        obstacles.append({'position': np.array(pos), 'size': np.array(size) * 2})  
+        # Get the AABB for the obstacle
+        aabb_min, aabb_max = p.getAABB(obs_id, physicsClientId=env.CLIENT)
 
+        # Convert to numpy arrays
+        aabb_min = np.array(aabb_min)
+        aabb_max = np.array(aabb_max)
 
-    arena_size = env.obstacle_config['arena_size']
-    x_range = [-arena_size/2, arena_size/2]
-    y_range = [-arena_size/2, arena_size/2]
-    z_range = [0.5, 2.0]
+        # Dilate the AABB
+        aabb_min -= dilation
+        aabb_max += dilation
+
+        # Append the dilated AABB as a dictionary
+        aabbs.append({'aabb_min': aabb_min, 'aabb_max': aabb_max})
+
+    for aabb in aabbs:
+        aabb_min = aabb['aabb_min']
+        aabb_max = aabb['aabb_max']
+
+        # Calculate center and extent
+        center = (aabb_min + aabb_max) / 2
+        extent = (aabb_max - aabb_min) / 2
+
+        # Create a transparent visual shape
+        visual_shape_id = p.createVisualShape(
+            shapeType=p.GEOM_BOX,
+            halfExtents=extent,
+            rgbaColor=[1, 0, 0, 0.05],  # Green color with 30% opacity
+            physicsClientId=env.CLIENT
+        )
+
+        # Create the body with only the visual shape (no collision or dynamics)
+        p.createMultiBody(
+            baseVisualShapeIndex=visual_shape_id,
+            basePosition=center,
+            physicsClientId=env.CLIENT
+        )
+
+    bvh_tree = build_bvh(aabbs)
+
+    arena_size = env.obstacle_config['environment_width']  # Updated to match new obstacle config
+    # x_range = [-arena_size / 2, arena_size / 2]
+    # y_range = [-arena_size / 2, arena_size / 2]
+    x_range = [0.1, 8.0]
+    y_range = [0.1, 8.0]
+    z_range = [0.1, 8.0]
 
     start_pos = np.copy(env.pos[0])
 
     # Initialize the RRT* planner
-    planner = RRTStarPlanner(
+    planner = RRTStarPlannerV2(
         start=start_pos,
         goal=goal_pos,
-        obstacles=obstacles,
+        bvh_tree=bvh_tree,
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=1000,
-        step_size=0.5,
-        goal_sample_rate=0.1,
+        max_iter=100000,
+        step_size=0.2,
+        goal_sample_rate=0.2,
         search_radius=1.0
     )
 
@@ -104,6 +143,11 @@ def main():
     # Run the simulation
     for i in range(num_steps):
         start_time = time.time()
+
+        for obs_id in env.obstacle_ids:
+            contact_points = p.getContactPoints(bodyA=env.DRONE_IDS[0], bodyB=obs_id)
+            if contact_points:
+                print(f"Collision detected with obstacle ID {obs_id}")
 
         current_pos = obs[0][0:3]
         if waypoint_idx < len(waypoints):
@@ -137,7 +181,7 @@ def main():
         )
 
 
-        print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
+        #print(f"Step {i}, Position: {current_pos}, Waypoint: {waypoint_idx}/{len(waypoints)}")
 
 
         if terminated or truncated:
