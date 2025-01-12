@@ -3,6 +3,8 @@ import random
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+
+
 class Node:
     def __init__(self, position):
         self.position = position
@@ -188,31 +190,44 @@ class RRTStarPlannerV2:
         path.reverse()
         return path
 
-    def draw_tree(self, show=True):
+    def draw_tree(self, optimal_path, show=True):
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d import Axes3D
+
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
+        # Plot the RRT* tree
         for (parent, child) in self.edge_list:
             x_vals = [parent.position[0], child.position[0]]
             y_vals = [parent.position[1], child.position[1]]
             z_vals = [parent.position[2], child.position[2]]
             ax.plot(x_vals, y_vals, z_vals, 'b-', linewidth=0.5)
 
+        # Plot the start and goal points
         ax.scatter(self.start.position[0], self.start.position[1], self.start.position[2],
                    color='green', marker='o', s=100, label='Start')
         ax.scatter(self.goal.position[0], self.goal.position[1], self.goal.position[2],
                    color='red', marker='*', s=100, label='Goal')
 
+        # Plot the optimal path
+        path_x = [point[0] for point in optimal_path]
+        path_y = [point[1] for point in optimal_path]
+        path_z = [point[2] for point in optimal_path]
+        ax.plot(path_x, path_y, path_z, color='orange', linewidth=1, label='Optimal Path',alpha=0.75)
+
+        # Set labels, title, and legend
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
-        ax.set_title('RRT* Tree')
+        ax.set_title('RRT* Tree with Optimal Path')
         ax.legend()
 
+        # Set aspect ratio for the workspace
         ax.set_box_aspect([
-            (self.x_range[1]-self.x_range[0]),
-            (self.y_range[1]-self.y_range[0]),
-            (self.z_range[1]-self.z_range[0])
+            (self.x_range[1] - self.x_range[0]),
+            (self.y_range[1] - self.y_range[0]),
+            (self.z_range[1] - self.z_range[0])
         ])
 
         if show:

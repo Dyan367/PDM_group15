@@ -20,6 +20,28 @@ from planners.rrt_star_plannerV2 import RRTStarPlannerV2
 from planners.bvh_tree import build_bvh
 
 
+#optimal path found through graphical search
+optimal_path = [
+    [0.5, 0.5, 1],
+    [1.4, 1.1, 0.9],
+    [6.1, 1.9, 0.9],
+    [6.1, 5.1, 0.9],
+    [5.1, 6.1, 0.9],
+    [1.9, 6.1, 0.9],
+    [1.9, 4.9, 0.9],
+    [2.1, 4.1, 2.1],
+    [1.9, 3.1, 2.5],
+    [1.9, 2.1, 2.9],
+    [1.9, 2.1, 4.1],
+    [3.1, 1.9, 4.19086229210592],
+    [3.1, 3.1, 4.28172458421184],
+    [1.9, 3.9, 4.41022327001633],
+    [1.9, 5.1, 4.50108556212225],
+    [6, 6.3, 4.9],
+    [6.5, 6.5, 5.5]
+]
+
+
 def waypoint_to_x_target(waypoint, current_position, max_velocity=5.0):
     x_target = np.zeros(12)
     x_target[:3] = waypoint
@@ -198,7 +220,8 @@ if __name__ == "__main__":
         distance = np.linalg.norm(np.array(waypoints[i]) - np.array(waypoints[i - 1]))
         path_length += distance
 
-    optimal_path_length = 29.868 # found through
+    optimal_path_length = 29.868 # found through graphical search.
+    
     optimality = optimal_path_length/path_length * 100
     print(f"RRT* Path Length: {path_length}")
     print(f"Optimality: {optimality}")
@@ -266,6 +289,7 @@ if __name__ == "__main__":
 
     # Plot results and close the environment
     env.plot_results()
+    planner.draw_tree(optimal_path)
     env.close()
 
-planner.draw_tree()
+
