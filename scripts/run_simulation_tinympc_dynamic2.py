@@ -190,6 +190,19 @@ if __name__ == "__main__":
     waypoints = np.array(path)
     waypoint_idx = 1
 
+    # Determine Path Length
+    # Compute path length
+    path_length = 0
+    for i in range(1, len(waypoints)):
+        # Compute Euclidean distance between consecutive waypoints
+        distance = np.linalg.norm(np.array(waypoints[i]) - np.array(waypoints[i - 1]))
+        path_length += distance
+
+    optimal_path_length = 29.868 # found through
+    optimality = optimal_path_length/path_length * 100
+    print(f"RRT* Path Length: {path_length}")
+    print(f"Optimality: {optimality}")
+
     waypoint_threshold = 0.5
 
     env.set_target(waypoint_to_x_target(waypoints[waypoint_idx], start_pos))
