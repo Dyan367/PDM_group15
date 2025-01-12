@@ -125,7 +125,7 @@ if __name__ == "__main__":
         visual_shape_id = p.createVisualShape(
             shapeType=p.GEOM_BOX,
             halfExtents=extent,
-            rgbaColor=[1, 0, 0, 0.05],  # Green color with 30% opacity
+            rgbaColor=[1, 0, 0, 0.0],  # Green color with 5% opacity
             physicsClientId=env.CLIENT
         )
 
@@ -250,3 +250,5 @@ if __name__ == "__main__":
     # Plot results and close the environment
     env.plot_results()
     env.close()
+
+planner.draw_tree()

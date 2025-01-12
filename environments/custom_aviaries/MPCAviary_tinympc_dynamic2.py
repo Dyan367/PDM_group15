@@ -57,7 +57,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
                          ctrl_freq=ctrl_freq,
                          gui=gui,
                          record=record,
-                         obstacles=obstacles,
+                         obstacles=False,
                          user_debug_gui=user_debug_gui,
                          vision_attributes=vision_attributes,
                          output_folder=output_folder)
@@ -178,7 +178,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
         Q = np.diag([
             2000, 2000, 3000,
-            10, 10, 500,
+            100, 100, 500,
             5, 5, 5,
             1, 1, 1
         ])
@@ -417,23 +417,23 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
             # roof layer 2
             [
-                [0, 0, 0, 0, 0, 0, 0, 0],
+                [1, 1, 0, 0, 0, 0, 0, 0],
+                [1, 0, 1, 1, 1, 1, 1, 0],
                 [0, 1, 1, 1, 1, 1, 1, 0],
                 [0, 1, 1, 1, 1, 1, 1, 0],
                 [0, 1, 1, 1, 1, 1, 1, 0],
                 [0, 1, 1, 1, 1, 1, 1, 0],
-                [0, 1, 1, 1, 1, 1, 1, 0],
-                [0, 0, 0, 0, 1, 1, 1, 0],
+                [1, 0, 0, 1, 1, 1, 1, 0],
                 [0, 1, 1, 1, 0, 0, 0, 0]
             ],
             # layer 3
             [
                 [1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 0, 1, 0, 1, 0, 0, 1],
-                [1, 0, 1, 0, 1, 0, 1, 1],
-                [1, 0, 1, 0, 0, 0, 1, 1],
                 [1, 0, 1, 0, 0, 0, 0, 1],
-                [1, 0, 0, 0, 1, 0, 0, 1],
+                [1, 0, 1, 0, 1, 0, 1, 1],
+                [1, 0, 0, 0, 1, 0, 1, 1],
+                [1, 1, 1, 1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 0, 0, 0, 1],
                 [1, 0, 0, 0, 1, 1, 0, 0],
                 [1, 1, 1, 1, 1, 1, 0, 0]
             ],
