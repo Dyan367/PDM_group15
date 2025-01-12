@@ -76,7 +76,8 @@ def find_closest_waypoint(current_pos, waypoints, start_idx=0):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-
+    #environment build timer
+    start_time = time.perf_counter()
     mpc_params = {
         'dt': 0.02,
         'N': 100,
@@ -115,8 +116,12 @@ if __name__ == "__main__":
     )
 
     obs, info = env.reset()
-    start_pos = env.pos[0].copy()
+    elapsed_env_init = time.perf_counter() - start_time
+    print(f"Environment Initialization: {elapsed_env_init:.4f} seconds")
 
+    start_pos = env.pos[0].copy()
+    ##aabb timer
+    start_time = time.perf_counter()
     aabbs = []
     dilation = 0.1  # Dilation amount
 
@@ -147,7 +152,7 @@ if __name__ == "__main__":
         visual_shape_id = p.createVisualShape(
             shapeType=p.GEOM_BOX,
             halfExtents=extent,
-            rgbaColor=[1, 0, 0, 0.0],  # Green color with 5% opacity
+            rgbaColor=[1, 0, 0, 0.0],  # Green color with 0% opacity
             physicsClientId=env.CLIENT
         )
 
@@ -157,8 +162,16 @@ if __name__ == "__main__":
             basePosition=center,
             physicsClientId=env.CLIENT
         )
+    elapsed_aabb = time.perf_counter() - start_time
+    print(f"AABB Generation: {elapsed_aabb:.4f} seconds")
+
+    # BVH timer
+    start_time = time.perf_counter()
 
     bvh_tree = build_bvh(aabbs)
+
+    elapsed_bvh = time.perf_counter() - start_time
+    print(f"BVH Tree Construction: {elapsed_bvh:.4f} seconds")
 
     arena_size = env.obstacle_config['environment_width']  # Updated to match new obstacle config
     # x_range = [-arena_size / 2, arena_size / 2]
@@ -180,6 +193,7 @@ if __name__ == "__main__":
         basePosition=goal_pos.tolist(),  # Position the sphere at the goal position
         physicsClientId=env.CLIENT
     )
+    start_time = time.perf_counter()
 
     planner = RRTStarPlannerV2(
         start=start_pos,
@@ -188,7 +202,7 @@ if __name__ == "__main__":
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=100000,
+        max_iter=50000,
         step_size=0.2,
         goal_sample_rate=0.2,
         search_radius=1.0
@@ -200,6 +214,9 @@ if __name__ == "__main__":
         env.close()
         exit()
 
+    elapsed_rrt = time.perf_counter() - start_time
+    print(f"RRT* Planning: {elapsed_rrt:.4f} seconds")
+
     for i in range(len(path) - 1):
         p.addUserDebugLine(
             lineFromXYZ=path[i],
@@ -208,6 +225,9 @@ if __name__ == "__main__":
             lifeTime=0,
             physicsClientId=env.CLIENT
         )
+
+    # Simulation timer
+    start_time = time.perf_counter()
 
     waypoints = np.array(path)
     waypoint_idx = 1
@@ -286,6 +306,9 @@ if __name__ == "__main__":
         if terminated or truncated:
             print(f"Episode ended at step {step}")
             break
+
+    elapsed_simulation = time.perf_counter() - start_time
+    print(f"Simulation Loop: {elapsed_simulation:.4f} seconds")
 
     # Plot results and close the environment
     env.plot_results()
