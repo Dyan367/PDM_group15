@@ -314,5 +314,3 @@ if __name__ == "__main__":
     env.plot_results()
     planner.draw_tree(optimal_path)
     env.close()
-
-
