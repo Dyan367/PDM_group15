@@ -67,12 +67,14 @@ In the directory `PDM_group15/scripts/` there is multiple scripts used to demons
 
 ```sh
 conda activate drones
-python PDM_group15/scripts/run_simulation_PID_baseline.py
+cd group15/
+python ./PDM_group15/scripts/run_simulation_PID_baseline.py
 ```
 
 To run the MPC implementation please use the following commands:
 
 ```sh
 conda activate drones
-python PDM_group15/scripts/run_simulation_tinympc_dynamic2.py
+cd group15/
+python ./PDM_group15/scripts/run_simulation_tinympc_dynamic2.py
 ```
