@@ -51,7 +51,7 @@ First clone the git repository.
 
 ```sh
 cd group15/
-git https://github.com/Dyan367/PDM_group15.git
+git clone https://github.com/Dyan367/PDM_group15.git
 ```
 
 Install dependencies.
