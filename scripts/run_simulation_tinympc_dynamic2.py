@@ -14,8 +14,6 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from environments.custom_aviaries.MPCAviary_tinympc_dynamic2 import MPCAviaryDynamicTinyMPC
-#from environments.custom_aviaries.MPCAviary_tinympc_dynamic3 import MPCAviaryDynamicTinyMPC
-
 from planners.rrt_star_plannerV2 import RRTStarPlannerV2
 from planners.bvh_tree import build_bvh
 
@@ -84,8 +82,6 @@ if __name__ == "__main__":
         mpc_params=mpc_params,
         x_target=None,
         obstacle_config={
-            'environment_width': 10.0,
-            'environment_height': 10.0,
             'wall_thickness': 1.0,
             'wall_height': 1.0,
             'cell_size':1.0
@@ -100,8 +96,9 @@ if __name__ == "__main__":
     start_pos = env.pos[0].copy()
     ##aabb timer
     start_time = time.perf_counter()
+
     aabbs = []
-    dilation = 0.1  # Dilation amount
+    dilation = 0.1  # Dilation amount Configuration Space Obstacles.
 
     for obs_id in env.obstacle_ids:
         # Get the AABB for the obstacle
@@ -151,9 +148,7 @@ if __name__ == "__main__":
     elapsed_bvh = time.perf_counter() - start_time
     print(f"BVH Tree Construction: {elapsed_bvh:.4f} seconds")
 
-    arena_size = env.obstacle_config['environment_width']  # Updated to match new obstacle config
-    # x_range = [-arena_size / 2, arena_size / 2]
-    # y_range = [-arena_size / 2, arena_size / 2]
+    # Arena confined search space
     x_range = [0.1, 8.0]
     y_range = [0.1, 8.0]
     z_range = [0.1, 8.0]
@@ -180,7 +175,7 @@ if __name__ == "__main__":
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=100000,
+        max_iter=50000,
         step_size=0.5,
         goal_sample_rate=0.5,
         search_radius=2.0
@@ -294,5 +289,5 @@ if __name__ == "__main__":
     # Plot results and close the environment
 
     env.plot_results()
-    planner.draw_tree(optimal_path)
+    planner.draw_tree()
     env.close()

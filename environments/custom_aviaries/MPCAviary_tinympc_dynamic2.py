@@ -178,7 +178,7 @@ class MPCAviaryDynamicTinyMPC(BaseAviary):
 
         Q = np.diag([
             2000, 2000, 3000,
-            100, 100, 500,
+            500, 500, 500,
             5, 5, 5,
             1, 1, 1
         ])
