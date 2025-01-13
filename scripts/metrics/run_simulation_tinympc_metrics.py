@@ -1,0 +1,402 @@
+import os
+import time
+import numpy as np
+import pybullet as p
+import gymnasium as gym
+import matplotlib.pyplot as plt
+import logging
+
+from gym_pybullet_drones.utils.enums import DroneModel, Physics
+import sys
+import os
+
+# Add the parent directory of 'environments' to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from environments.custom_aviaries.MPCAviary_tinympc_dynamic2 import MPCAviaryDynamicTinyMPC
+# from environments.custom_aviaries.MPCAviary_tinympc_dynamic3 import MPCAviaryDynamicTinyMPC
+
+from planners.rrt_star_plannerV2 import RRTStarPlannerV2
+from planners.bvh_tree import build_bvh
+
+
+# Optimal path found through graphical search
+optimal_path = [
+    [0.5, 0.5, 1],
+    [1.4, 1.1, 0.9],
+    [6.1, 1.9, 0.9],
+    [6.1, 5.1, 0.9],
+    [5.1, 6.1, 0.9],
+    [1.9, 6.1, 0.9],
+    [1.9, 4.9, 0.9],
+    [2.1, 4.1, 2.1],
+    [1.9, 3.1, 2.5],
+    [1.9, 2.1, 2.9],
+    [1.9, 2.1, 4.1],
+    [3.1, 1.9, 4.19086229210592],
+    [3.1, 3.1, 4.28172458421184],
+    [1.9, 3.9, 4.41022327001633],
+    [1.9, 5.1, 4.50108556212225],
+    [6, 6.3, 4.9],
+    [6.5, 6.5, 5.5]
+]
+
+
+def waypoint_to_x_target(waypoint, current_position, max_velocity=5.0):
+    x_target = np.zeros(12)
+    x_target[:3] = waypoint
+    distance_vector = waypoint - current_position
+    distance = np.linalg.norm(distance_vector)
+    if distance > 0:
+        desired_velocity = (distance_vector / distance) * min(distance, max_velocity)
+    else:
+        desired_velocity = np.zeros(3)
+    x_target[3:6] = desired_velocity
+    return x_target
+
+
+def find_closest_waypoint(current_pos, waypoints, start_idx=0):
+    """
+    Find the index of the closest waypoint to the current position.
+
+    Args:
+        current_pos (np.array): Current position of the drone [x, y, z].
+        waypoints (np.array): List of waypoints (Nx3).
+        start_idx (int): The starting index to search for the closest waypoint.
+
+    Returns:
+        int: Index of the closest waypoint.
+    """
+    # Compute distances to all remaining waypoints
+    distances = np.linalg.norm(waypoints[start_idx:] - current_pos, axis=1)
+    # Find the index of the closest waypoint
+    closest_idx = np.argmin(distances) + start_idx
+    return closest_idx
+
+
+def point_to_line_distance(point, line_start, line_end):
+    """
+    Compute the perpendicular distance from a point to a line segment in 3D.
+
+    Args:
+        point (np.array): The drone's current position [x, y, z].
+        line_start (np.array): The start waypoint of the path segment [x, y, z].
+        line_end (np.array): The end waypoint of the path segment [x, y, z].
+
+    Returns:
+        float: The perpendicular distance.
+    """
+    line_vec = line_end - line_start
+    point_vec = point - line_start
+    line_len = np.linalg.norm(line_vec)
+    
+    if line_len == 0:
+        return np.linalg.norm(point_vec)
+    
+    line_unitvec = line_vec / line_len
+    projection = np.dot(point_vec, line_unitvec)
+    
+    if projection < 0:
+        closest_point = line_start
+    elif projection > line_len:
+        closest_point = line_end
+    else:
+        closest_point = line_start + projection * line_unitvec
+    
+    return np.linalg.norm(point - closest_point)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    # Environment build timer
+    start_time = time.perf_counter()
+    mpc_params = {
+        'dt': 0.02,
+        'N': 100,
+        'sim_time': 5000,
+        'proximity_threshold': 0.01
+    }
+
+    start_pos = np.array([0.0, 0.0, 0.3])
+    goal_pos = np.array([6.5, 6.5, 5.5])
+
+    env = MPCAviaryDynamicTinyMPC(
+        drone_model=DroneModel.CF2X,
+        num_drones=1,
+        neighbourhood_radius=np.inf,
+        initial_xyzs=np.array([[0, 0, 1]]),
+        initial_rpys=np.array([[0, 0, 0]]),
+        physics=Physics.PYB,
+        pyb_freq=240,
+        ctrl_freq=240,
+        gui=True,
+        record=False,
+        obstacles=True,
+        user_debug_gui=False,
+        vision_attributes=False,
+        output_folder='results',
+        mpc_params=mpc_params,
+        x_target=None,
+        obstacle_config={
+            'environment_width': 10.0,
+            'environment_height': 10.0,
+            'wall_thickness': 1.0,
+            'wall_height': 1.0,
+            'cell_size':1.0
+        },
+        seed=42
+    )
+
+    obs, info = env.reset()
+    elapsed_env_init = time.perf_counter() - start_time
+    print(f"Environment Initialization: {elapsed_env_init:.4f} seconds")
+
+    start_pos = env.pos[0].copy()
+    ## AABB timer
+    start_time = time.perf_counter()
+    aabbs = []
+    dilation = 0.1  # Dilation amount
+
+    for obs_id in env.obstacle_ids:
+        # Get the AABB for the obstacle
+        aabb_min, aabb_max = p.getAABB(obs_id, physicsClientId=env.CLIENT)
+
+        # Convert to numpy arrays
+        aabb_min = np.array(aabb_min)
+        aabb_max = np.array(aabb_max)
+
+        # Dilate the AABB
+        aabb_min -= dilation
+        aabb_max += dilation
+
+        # Append the dilated AABB as a dictionary
+        aabbs.append({'aabb_min': aabb_min, 'aabb_max': aabb_max})
+
+    for aabb in aabbs:
+        aabb_min = aabb['aabb_min']
+        aabb_max = aabb['aabb_max']
+
+        # Calculate center and extent
+        center = (aabb_min + aabb_max) / 2
+        extent = (aabb_max - aabb_min) / 2
+
+        # Create a transparent visual shape
+        visual_shape_id = p.createVisualShape(
+            shapeType=p.GEOM_BOX,
+            halfExtents=extent,
+            rgbaColor=[1, 0, 0, 0.0],  # Green color with 0% opacity
+            physicsClientId=env.CLIENT
+        )
+
+        # Create the body with only the visual shape (no collision or dynamics)
+        p.createMultiBody(
+            baseVisualShapeIndex=visual_shape_id,
+            basePosition=center,
+            physicsClientId=env.CLIENT
+        )
+    elapsed_aabb = time.perf_counter() - start_time
+    print(f"AABB Generation: {elapsed_aabb:.4f} seconds")
+
+    # BVH timer
+    start_time = time.perf_counter()
+
+    bvh_tree = build_bvh(aabbs)
+
+    elapsed_bvh = time.perf_counter() - start_time
+    print(f"BVH Tree Construction: {elapsed_bvh:.4f} seconds")
+
+    arena_size = env.obstacle_config['environment_width']  # Updated to match new obstacle config
+    # x_range = [-arena_size / 2, arena_size / 2]
+    # y_range = [-arena_size / 2, arena_size / 2]
+    x_range = [0.1, 8.0]
+    y_range = [0.1, 8.0]
+    z_range = [0.1, 8.0]
+
+    goal_sphere_radius = 0.2  # Radius of the sphere
+    visual_shape_id = p.createVisualShape(
+        shapeType=p.GEOM_SPHERE,
+        radius=goal_sphere_radius,
+        rgbaColor=[0, 0, 0, 1],
+        physicsClientId=env.CLIENT
+    )
+
+    p.createMultiBody(
+        baseVisualShapeIndex=visual_shape_id,
+        basePosition=goal_pos.tolist(),  # Position the sphere at the goal position
+        physicsClientId=env.CLIENT
+    )
+    start_time = time.perf_counter()
+
+    planner = RRTStarPlannerV2(
+        start=start_pos,
+        goal=goal_pos,
+        bvh_tree=bvh_tree,
+        x_range=x_range,
+        y_range=y_range,
+        z_range=z_range,
+        max_iter=50000,
+        step_size=0.2,
+        goal_sample_rate=0.2,
+        search_radius=1.0
+    )
+
+    path = planner.plan()
+    if path is None:
+        print("Failed to find a path!")
+        env.close()
+        exit()
+
+    elapsed_rrt = time.perf_counter() - start_time
+    print(f"RRT* Planning: {elapsed_rrt:.4f} seconds")
+
+    for i in range(len(path) - 1):
+        p.addUserDebugLine(
+            lineFromXYZ=path[i],
+            lineToXYZ=path[i + 1],
+            lineColorRGB=[0, 0, 1],
+            lifeTime=0,
+            physicsClientId=env.CLIENT
+        )
+
+    # Simulation timer
+    start_time = time.perf_counter()
+
+    waypoints = np.array(path)
+    waypoint_idx = 1
+
+    # Determine Path Length
+    # Compute path length
+    path_length = 0
+    for i in range(1, len(waypoints)):
+        # Compute Euclidean distance between consecutive waypoints
+        distance = np.linalg.norm(np.array(waypoints[i]) - np.array(waypoints[i - 1]))
+        path_length += distance
+
+    optimal_path_length = 29.868  # Found through graphical search.
+
+    optimality = optimal_path_length / path_length * 100
+    print(f"RRT* Path Length: {path_length}")
+    print(f"Optimality: {optimality}%")
+
+    waypoint_threshold = 0.5
+
+    env.set_target(waypoint_to_x_target(waypoints[waypoint_idx], start_pos))
+
+    total_steps = int(mpc_params['sim_time'] / mpc_params['dt'])
+    # Initialize variables
+    goal_threshold = 0.1  # Threshold for reaching the goal
+    action = np.zeros((1, 4))  # Initialize the action array (e.g., motor RPMs)
+
+    # Set the initial target to the first waypoint
+    env.set_target(waypoint_to_x_target(waypoints[waypoint_idx], start_pos))
+
+    # ======== Modified: Initialize list to store distance errors ========
+    distance_errors = []
+    # ======== Modified: Store previous waypoint for distance calculation ========
+    previous_waypoint = waypoints[0]
+    # =======================================================================
+
+    # Simulation loop
+    for step in range(total_steps):
+        # Step the environment (action can be passed if needed)
+        obs, reward, terminated, truncated, info = env.step(action)
+        for obs_id in env.obstacle_ids:
+            contact_points = p.getContactPoints(bodyA=env.DRONE_IDS[0], bodyB=obs_id)
+            if contact_points:
+                print(f"Collision detected with obstacle ID {obs_id}")
+
+        # Get the drone's current position
+        current_pos = obs[:3]
+
+        # Check proximity to the current waypoint
+        distance_to_waypoint = np.linalg.norm(current_pos - waypoints[waypoint_idx])
+        if distance_to_waypoint < waypoint_threshold:
+            print(f"Step {step}: Reached waypoint {waypoint_idx} at position {current_pos} with distance {distance_to_waypoint:.4f} m")
+            waypoint_idx += 1  # Move to the next waypoint
+            if waypoint_idx >= len(waypoints):  # Check if all waypoints are completed
+                print(f"Reached final waypoint at step {step}, time {step * mpc_params['dt']:.2f}s")
+                break
+
+            # Set the new target for the MPC
+            new_target = waypoint_to_x_target(waypoints[waypoint_idx], current_pos)
+            env.set_target(new_target)
+            print(f"Switching to waypoint {waypoint_idx}: {waypoints[waypoint_idx]}")
+
+            # Update previous waypoint
+            previous_waypoint = waypoints[waypoint_idx - 1]
+
+        # Dynamically find the closest waypoint (for debugging or visualization)
+        closest_idx = find_closest_waypoint(current_pos, waypoints)
+
+        # Draw a blue line to the closest waypoint
+        p.addUserDebugLine(
+            lineFromXYZ=current_pos,
+            lineToXYZ=waypoints[closest_idx],
+            lineColorRGB=[0, 0, 1],  # Blue color
+            lifeTime=0.02,
+            physicsClientId=env.CLIENT
+        )
+
+        # ======== Modified: Compute distance to the closest path segment ========
+        closest_distance = float('inf')
+        closest_segment = None
+
+        for j in range(len(waypoints) - 1):
+            seg_start = waypoints[j]
+            seg_end = waypoints[j + 1]
+            dist = point_to_line_distance(current_pos, seg_start, seg_end)
+            if dist < closest_distance:
+                closest_distance = dist
+                closest_segment = j
+
+        distance_errors.append(closest_distance)
+        # ===================================================================
+
+        # Check if the drone is close enough to the goal
+        distance_to_goal = np.linalg.norm(current_pos - goal_pos)
+        if distance_to_goal < goal_threshold:
+            print(f"Goal reached at step {step}, time {step * mpc_params['dt']:.2f}s")
+            break
+
+        # Log progress (optional)
+        # print(f"Step {step}, Position: {current_pos}, Current Target: {waypoints[waypoint_idx]}")
+
+        # Handle termination or truncation
+        if terminated or truncated:
+            print(f"Episode ended at step {step}")
+            break
+
+    elapsed_simulation = time.perf_counter() - start_time
+    print(f"Simulation Loop: {elapsed_simulation:.4f} seconds")
+
+    # ======== Modified: Calculate and print distance statistics ========
+    if distance_errors:
+        average_distance = np.mean(distance_errors)
+        median_distance = np.median(distance_errors)
+        max_distance = np.max(distance_errors)
+        std_distance = np.std(distance_errors)
+        print(f"Average Path Following Distance: {average_distance:.4f} meters")
+        print(f"Median Distance: {median_distance:.4f} meters")
+        print(f"Maximum Distance: {max_distance:.4f} meters")
+        print(f"Standard Deviation: {std_distance:.4f} meters")
+    else:
+        print("No distance data collected.")
+    # ===================================================================
+
+    # Plot results and close the environment
+    env.plot_results()
+    planner.draw_tree(optimal_path)
+
+    # ======== Modified: Plot the distance errors over time ========
+    plt.figure(figsize=(10, 5))
+    plt.plot(np.arange(len(distance_errors)) * mpc_params['dt'], distance_errors, label='Distance to Closest Path Segment')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Distance (m)')
+    plt.title('Drone Path Following Error Over Time')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    # ================================================================
+
+    env.close()
