@@ -202,10 +202,10 @@ if __name__ == "__main__":
         x_range=x_range,
         y_range=y_range,
         z_range=z_range,
-        max_iter=50000,
-        step_size=0.2,
-        goal_sample_rate=0.2,
-        search_radius=1.0
+        max_iter=100000,
+        step_size=0.5,
+        goal_sample_rate=0.5,
+        search_radius=2.0
     )
 
     path = planner.plan()
