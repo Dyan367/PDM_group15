@@ -20,28 +20,6 @@ from planners.rrt_star_plannerV2 import RRTStarPlannerV2
 from planners.bvh_tree import build_bvh
 
 
-#optimal path found through graphical search
-optimal_path = [
-    [0.5, 0.5, 1],
-    [1.4, 1.1, 0.9],
-    [6.1, 1.9, 0.9],
-    [6.1, 5.1, 0.9],
-    [5.1, 6.1, 0.9],
-    [1.9, 6.1, 0.9],
-    [1.9, 4.9, 0.9],
-    [2.1, 4.1, 2.1],
-    [1.9, 3.1, 2.5],
-    [1.9, 2.1, 2.9],
-    [1.9, 2.1, 4.1],
-    [3.1, 1.9, 4.19086229210592],
-    [3.1, 3.1, 4.28172458421184],
-    [1.9, 3.9, 4.41022327001633],
-    [1.9, 5.1, 4.50108556212225],
-    [6, 6.3, 4.9],
-    [6.5, 6.5, 5.5]
-]
-
-
 def waypoint_to_x_target(waypoint, current_position, max_velocity=5.0):
     x_target = np.zeros(12)
     x_target[:3] = waypoint
@@ -258,6 +236,7 @@ if __name__ == "__main__":
     # Set the initial target to the first waypoint
     env.set_target(waypoint_to_x_target(waypoints[waypoint_idx], start_pos))
 
+    obs_hit = []
     # Simulation loop
     for step in range(total_steps):
         # Step the environment (action can be passed if needed)
@@ -266,6 +245,7 @@ if __name__ == "__main__":
             contact_points = p.getContactPoints(bodyA=env.DRONE_IDS[0], bodyB=obs_id)
             if contact_points:
                 print(f"Collision detected with obstacle ID {obs_id}")
+                obs_hit.append(obs_id)
 
         # Get the drone's current position
         current_pos = obs[:3]
@@ -309,8 +289,10 @@ if __name__ == "__main__":
 
     elapsed_simulation = time.perf_counter() - start_time
     print(f"Simulation Loop: {elapsed_simulation:.4f} seconds")
-
+    obstacles_hit = len(np.unique(obs_hit))
+    print(f"Number of obstacles hit: {obstacles_hit}")
     # Plot results and close the environment
+
     env.plot_results()
     planner.draw_tree(optimal_path)
     env.close()

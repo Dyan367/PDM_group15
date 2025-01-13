@@ -10,14 +10,34 @@ from gym_pybullet_drones.utils.enums import DroneModel, Physics
 
 # Define the grid of parameters to test
 parameter_grid = {
-    "iterations": [50000],
-    "step_size": [0.5],
-    "goal_sample_rate": [0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5],
-    "search_radius": [2]
+    "iterations": [20000,50000,100000,250000],
+    "step_size": [0.1,0.2,0.50,0.75],
+    "goal_sample_rate": [0.25,0.5],
+    "search_radius": [1.0 , 2.0]
 }
 
 # Create an empty list to store results
 results = []
+#optimal path found through graphical search
+optimal_path = [
+    [0.5, 0.5, 1],
+    [1.4, 1.1, 0.9],
+    [6.1, 1.9, 0.9],
+    [6.1, 5.1, 0.9],
+    [5.1, 6.1, 0.9],
+    [1.9, 6.1, 0.9],
+    [1.9, 4.9, 0.9],
+    [2.1, 4.1, 2.1],
+    [1.9, 3.1, 2.5],
+    [1.9, 2.1, 2.9],
+    [1.9, 2.1, 4.1],
+    [3.1, 1.9, 4.19086229210592],
+    [3.1, 3.1, 4.28172458421184],
+    [1.9, 3.9, 4.41022327001633],
+    [1.9, 5.1, 4.50108556212225],
+    [6, 6.3, 4.9],
+    [6.5, 6.5, 5.5]
+]
 
 # Environment Configuration
 mpc_params = {
@@ -135,6 +155,8 @@ for iterations in parameter_grid["iterations"]:
                     "Optimality (%)": round(optimality, 2),
                     "Runtime (s)": round(runtime, 2)
                 })
+
+                planner.draw_tree(optimal_path=optimal_path)
 
 # Save results to a CSV file
 results_df = pd.DataFrame(results)

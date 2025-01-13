@@ -4,6 +4,28 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 
+#optimal path found through graphical search
+optimal_path = [
+    [0.5, 0.5, 1],
+    [1.4, 1.1, 0.9],
+    [6.1, 1.9, 0.9],
+    [6.1, 5.1, 0.9],
+    [5.1, 6.1, 0.9],
+    [1.9, 6.1, 0.9],
+    [1.9, 4.9, 0.9],
+    [2.1, 4.1, 2.1],
+    [1.9, 3.1, 2.5],
+    [1.9, 2.1, 2.9],
+    [1.9, 2.1, 4.1],
+    [3.1, 1.9, 4.19086229210592],
+    [3.1, 3.1, 4.28172458421184],
+    [1.9, 3.9, 4.41022327001633],
+    [1.9, 5.1, 4.50108556212225],
+    [6, 6.3, 4.9],
+    [6.5, 6.5, 5.5]
+]
+
+
 
 class Node:
     def __init__(self, position):
@@ -190,10 +212,7 @@ class RRTStarPlannerV2:
         path.reverse()
         return path
 
-    def draw_tree(self, optimal_path, show=True):
-        import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
-
+    def draw_tree(self, optimal_path=optimal_path, show=True):
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
