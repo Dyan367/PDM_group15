@@ -78,3 +78,9 @@ conda activate drones
 cd group15/
 python ./PDM_group15/scripts/run_simulation_tinympc_dynamic2.py
 ```
+
+## Example Environment
+
+If everything is done correctly once you run either the PID or MPC implementation the environment should load as such:
+
+![example_env](./environment_example.jpeg)
